@@ -44,7 +44,6 @@ interface MetricCellContentProps {
   metricDef: MetricDefinition;
   periodName: string;
   onTeamMetricChange: CapacityTableProps['onTeamMetricChange'];
-  isSumColumn: boolean;
 }
 
 const MetricCellContent: React.FC<MetricCellContentProps> = ({
@@ -53,7 +52,6 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
   metricDef,
   periodName,
   onTeamMetricChange,
-  isSumColumn, // Though sum column is removed, keeping prop if other logic might use it later, but current logic ignores it.
 }) => {
   if (!metricData) {
     return <Minus className="h-4 w-4 text-muted-foreground mx-auto" />;
@@ -61,12 +59,12 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
 
   const rawValue = (metricData as any)[metricDef.key];
 
-  if (item.itemType === 'Team' && metricDef.isEditableForTeam && !isSumColumn) {
+  if (item.itemType === 'Team' && metricDef.isEditableForTeam) {
     const teamName = item.name as TeamName; 
     const lobId = item.lobId;
 
     if (!lobId) {
-      
+      console.error("Error in MetricCellContent: Missing LOB ID for team item:", item);
       return <span className="text-xs text-destructive">Error: Missing LOB ID</span>;
     }
 
@@ -166,7 +164,7 @@ const MetricRow: React.FC<MetricRowProps> = ({ item, metricDef, level, periodHea
   return (
     <TableRow className="hover:bg-card-foreground/5">
       <TableCell
-        className="sticky left-0 z-10 bg-card font-normal text-foreground whitespace-nowrap"
+        className="sticky left-0 z-20 bg-card font-normal text-foreground whitespace-nowrap"
         style={{ paddingLeft: `${level * 1.5 + 1}rem` }}
       >
         {metricDef.label}
@@ -192,7 +190,6 @@ const MetricRow: React.FC<MetricRowProps> = ({ item, metricDef, level, periodHea
                 metricDef={metricDef} 
                 periodName={periodHeader} 
                 onTeamMetricChange={onTeamMetricChange}
-                isSumColumn={false} // Sum column logic removed
             />
           </TableCell>
         );
@@ -256,7 +253,7 @@ export function CapacityTable({
         {(item.children && item.children.length > 0) ? (
           <TableCell 
             colSpan={1} 
-            className="p-0 sticky left-0 z-20 bg-card whitespace-nowrap"
+            className="p-0 sticky left-0 z-30 bg-card whitespace-nowrap"
           >
             <button
               onClick={() => toggleExpand(item.id)}
@@ -270,7 +267,7 @@ export function CapacityTable({
           </TableCell>
         ) : (
           <TableCell 
-            className="sticky left-0 z-10 bg-card font-semibold text-foreground whitespace-nowrap py-3 px-4"
+            className="sticky left-0 z-30 bg-card font-semibold text-foreground whitespace-nowrap py-3 px-4"
             style={{ paddingLeft: `${item.level * 1.5 + 1}rem` }}
           >
             {item.name}
@@ -305,11 +302,21 @@ export function CapacityTable({
     if (data.length === 0) return 'Category / Metric';
     const firstTopLevelItem = data[0];
     if (firstTopLevelItem.level === 0) {
-      if (firstTopLevelItem.itemType === 'BU') return 'BU / LoB / Team / Metric';
-      if (firstTopLevelItem.itemType === 'LOB') return 'LoB / Team / Metric';
+      if (firstTopLevelItem.itemType === 'BU' && selectedGroupBy === 'Business Unit') return 'BU / LoB / Team / Metric';
+      if (firstTopLevelItem.itemType === 'LOB' && selectedGroupBy === 'Line of Business') return 'LoB / Team / Metric';
     }
-    return 'Category / Metric';
+    // Fallback or when BU is selected but LOBs are shown, or vice-versa
+    if (selectedGroupBy === 'Business Unit') return 'BU / LoB / Team / Metric';
+    return 'LoB / Team / Metric';
   };
+
+  // Determine selectedGroupBy from the data structure if possible, or pass as prop
+  // This is a simplification; ideally, selectedGroupBy would be a prop or context
+  let selectedGroupBy: string = "Business Unit"; // Default
+  if (data.length > 0 && data[0].itemType === 'LOB' && data[0].level === 0) {
+      selectedGroupBy = "Line of Business";
+  }
+
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -346,3 +353,4 @@ export function CapacityTable({
     </TooltipProvider>
   );
 }
+
