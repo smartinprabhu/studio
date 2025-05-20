@@ -24,7 +24,7 @@ import {
   RawTeamDataEntry,
 } from "@/components/capacity-insights/types";
 import type { MetricDefinition } from "@/components/capacity-insights/types";
-import { parse, isWithinInterval, startOfWeek, endOfWeek, getWeek, getMonth, getYear, format as formatDate } from 'date-fns';
+import { parse, isWithinInterval, getWeek, getMonth, getYear, format as formatDate } from 'date-fns';
 
 
 const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60; // 40 hours * 60 minutes
@@ -33,29 +33,32 @@ const STANDARD_MONTHLY_WORK_MINUTES = (40 * 52 / 12) * 60; // Average minutes pe
 
 // Helper to calculate team-specific metrics for a single period
 const calculateTeamMetricsForPeriod = (
-  teamInputData: RawTeamDataEntry['periodicInputData'][string], 
+  teamInputData: Partial<RawTeamDataEntry['periodicInputData'][string]>, 
   lobBaseRequiredAgentMinutes: number | null,
   standardWorkMinutesForPeriod: number
 ): TeamPeriodicMetrics => {
-  const defaults: Omit<TeamPeriodicMetrics, keyof RawTeamDataEntry['periodicInputData'][string]> & RawTeamDataEntry['periodicInputData'][string] = {
-    ...teamInputData, // Spread input data first
+  const defaults: TeamPeriodicMetrics = {
+    aht: null, shrinkagePercentage: null, occupancyPercentage: null, backlogPercentage: null,
+    attritionPercentage: null, volumeMixPercentage: null, actualHC: null, moveIn: null,
+    moveOut: null, newHireBatch: null, newHireProduction: null, _productivity: null,
     _calculatedRequiredAgentMinutes: null, 
     _calculatedActualAgentMinutes: null,
     requiredHC: null, 
     overUnderHC: null,
+    ...teamInputData, // Spread input data to override defaults
   };
 
   if (lobBaseRequiredAgentMinutes === null || lobBaseRequiredAgentMinutes === undefined) {
     return defaults;
   }
 
-  const calculatedRequiredAgentMinutes = lobBaseRequiredAgentMinutes * ((teamInputData.volumeMixPercentage ?? 0) / 100);
+  const calculatedRequiredAgentMinutes = lobBaseRequiredAgentMinutes * ((defaults.volumeMixPercentage ?? 0) / 100);
   
   let requiredHC = null;
-  if (calculatedRequiredAgentMinutes > 0 && standardWorkMinutesForPeriod > 0 && teamInputData.shrinkagePercentage !== null && teamInputData.occupancyPercentage !== null) {
+  if (calculatedRequiredAgentMinutes > 0 && standardWorkMinutesForPeriod > 0 && defaults.shrinkagePercentage !== null && defaults.occupancyPercentage !== null) {
     const effectiveMinutesPerHC = standardWorkMinutesForPeriod * 
-                                 (1 - (teamInputData.shrinkagePercentage / 100)) * 
-                                 (teamInputData.occupancyPercentage / 100);
+                                 (1 - (defaults.shrinkagePercentage / 100)) * 
+                                 (defaults.occupancyPercentage / 100);
     if (effectiveMinutesPerHC > 0) {
       requiredHC = calculatedRequiredAgentMinutes / effectiveMinutesPerHC;
     }
@@ -63,151 +66,47 @@ const calculateTeamMetricsForPeriod = (
     requiredHC = 0;
   }
 
-
-  const actualHC = teamInputData.actualHC ?? null;
+  const actualHC = defaults.actualHC ?? null;
   const overUnderHC = (actualHC !== null && requiredHC !== null) ? actualHC - requiredHC : null;
 
   let calculatedActualAgentMinutes = null;
   if (calculatedRequiredAgentMinutes !== null && requiredHC !== null && requiredHC > 0 && actualHC !== null) {
-    // If we have requiredHC and actualHC, actual minutes can be scaled from required minutes
     calculatedActualAgentMinutes = calculatedRequiredAgentMinutes * (actualHC / requiredHC);
   } else if (requiredHC === 0 && actualHC !== null && actualHC > 0) { 
-     // If no required HC (implying 0 required minutes for this team), but actual HC exists, actual minutes are effectively 0 from a "work done against requirement" perspective.
-     // Or, if we wanted to show potential capacity: actualHC * effectiveMinutesPerHC (but this isn't "actual work done on required volume")
      calculatedActualAgentMinutes = 0; 
   } else if (requiredHC === null && actualHC !== null && actualHC > 0) {
-    // If requiredHC couldn't be calculated (e.g. missing shrinkage/occ), but actualHC exists, we can't accurately determine actual agent minutes without more assumptions.
-    // For now, let's assume if requiredHC is null due to missing inputs, actual agent minutes derived from it are also null.
     calculatedActualAgentMinutes = null;
   }
 
-
   return {
-    ...teamInputData,
+    ...defaults,
     _calculatedRequiredAgentMinutes: calculatedRequiredAgentMinutes,
     _calculatedActualAgentMinutes: calculatedActualAgentMinutes,
     requiredHC: requiredHC,
-    actualHC: actualHC, // already in teamInputData
     overUnderHC: overUnderHC,
   };
 };
 
-
-const aggregateAndSummarizeMetrics = (
-  m1: AggregatedPeriodicMetrics | TeamPeriodicMetrics, 
-  m2: AggregatedPeriodicMetrics | TeamPeriodicMetrics
-): AggregatedPeriodicMetrics | TeamPeriodicMetrics => {
-  
-  const result = { ...m1 }; 
-
-  // Sum agent-minute related fields (present in AggregatedPeriodicMetrics)
-  if ('required' in result && 'required' in m2) {
-    result.required = (m1.required ?? 0) + (m2.required ?? 0);
-  }
-  if ('actual' in result && 'actual' in m2) {
-    result.actual = (m1.actual ?? 0) + (m2.actual ?? 0);
-  }
-  if (result.required !== null && result.required !== 0 && result.actual !== null) {
-    result.overUnder = result.actual - result.required;
-    result.adherence = (result.actual / result.required) * 100;
-  } else if (result.required === 0 && result.actual !== null && result.actual > 0) { // Infinite adherence if actual > 0 and required is 0
-    result.overUnder = result.actual;
-    result.adherence = null; // Or some indicator of 100%+ overstaffing
-  } else {
-    result.overUnder = (result.actual ?? 0) - (result.required ?? 0);
-    result.adherence = null;
-  }
-
-  // Sum HC related fields
-  result.requiredHC = (m1.requiredHC ?? 0) + (m2.requiredHC ?? 0);
-  result.actualHC = (m1.actualHC ?? 0) + (m2.actualHC ?? 0); // actualHC is summed up
-  if (result.requiredHC !== null && result.actualHC !== null) {
-    result.overUnderHC = result.actualHC - result.requiredHC;
-  } else {
-    result.overUnderHC = null;
-  }
-  
-  // For team summary (summing TeamPeriodicMetrics for a team row across periods)
-  // This part is less relevant now as we removed the per-row summary column.
-  // If we re-introduce it, these average/latest value assignments would be important.
-  if ('aht' in m1 && 'aht' in m2) { // Indicates these are TeamPeriodicMetrics
-      result.aht = m2.aht; 
-      result.shrinkagePercentage = m2.shrinkagePercentage;
-      result.occupancyPercentage = m2.occupancyPercentage;
-      result.backlogPercentage = m2.backlogPercentage;
-      result.attritionPercentage = m2.attritionPercentage;
-      result.volumeMixPercentage = m2.volumeMixPercentage; 
-      
-      result.moveIn = (m1.moveIn ?? 0) + (m2.moveIn ?? 0);
-      result.moveOut = (m1.moveOut ?? 0) + (m2.moveOut ?? 0);
-      result.newHireBatch = (m1.newHireBatch ?? 0) + (m2.newHireBatch ?? 0);
-      result.newHireProduction = (m1.newHireProduction ?? 0) + (m2.newHireProduction ?? 0);
-      result._productivity = m2._productivity;
-  }
-
-  // Sum underlying calculated agent minutes for consistency in totals, if present
-  if ('_calculatedRequiredAgentMinutes' in result && '_calculatedRequiredAgentMinutes' in m2 && m2._calculatedRequiredAgentMinutes !== null) {
-    result._calculatedRequiredAgentMinutes = (result._calculatedRequiredAgentMinutes ?? 0) + (m2._calculatedRequiredAgentMinutes ?? 0);
-  }
-  if ('_calculatedActualAgentMinutes' in result && '_calculatedActualAgentMinutes' in m2 && m2._calculatedActualAgentMinutes !== null) {
-    result._calculatedActualAgentMinutes = (result._calculatedActualAgentMinutes ?? 0) + (m2._calculatedActualAgentMinutes ?? 0);
-  }
-
-  return result;
-};
-
-const initialAggregatedMetrics: AggregatedPeriodicMetrics = {
-  required: 0, actual: 0, overUnder: 0, adherence: null,
-  requiredHC: 0, actualHC: 0, overUnderHC: 0,
-};
-
-const initialTeamPeriodMetricsForSum: TeamPeriodicMetrics = { // Still used as a template, though sum column is gone
-  aht: null, shrinkagePercentage: null, occupancyPercentage: null, backlogPercentage: null,
-  attritionPercentage: null, volumeMixPercentage: 0, 
-  actualHC: 0, moveIn: 0, moveOut: 0,
-  newHireBatch: 0, newHireProduction: 0, _productivity: null,
-  _calculatedRequiredAgentMinutes: 0, _calculatedActualAgentMinutes: 0,
-  requiredHC: 0, overUnderHC: 0,
-};
-
-const getInitialPeriodIndex = (interval: TimeInterval, headers: string[]): number => {
+// This function is for determining the current period's index, not for default view.
+const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): number => {
   const now = new Date();
   if (interval === "Week") {
-    for (let i = 0; i < headers.length; i++) {
-      const header = headers[i];
-      // Try parsing date range first: "WkX: MM/DD-MM/DD"
-      const dateRangeMatch = header.match(/Wk\d+:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})/);
-      if (dateRangeMatch) {
-        const year = getYear(now); // Assuming 2024 for mock data consistency
-        const startDateStr = `${dateRangeMatch[1]}/${year}`;
-        const endDateStr = `${dateRangeMatch[2]}/${year}`;
-        try {
-          const startDate = parse(startDateStr, 'MM/dd/yyyy', new Date());
-          const endDate = parse(endDateStr, 'MM/dd/yyyy', new Date());
-          // Adjust end date to be end of day for correct interval checking
-          const endOfDayEndDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59);
-
-          if (isWithinInterval(now, { start: startDate, end: endOfDayEndDate })) {
-            return i;
-          }
-        } catch (e) {
-          console.warn(`Error parsing week date range: ${header}`, e);
-          // Fallback to week number match if parsing fails
-        }
-      }
-      // Fallback or primary for simple "WkX" headers if date parsing isn't robust
-      const currentWeekNumber = getWeek(now, { weekStartsOn: 1 }); // ISO week
-      const headerWeekMatch = header.match(/Wk(\d+)/);
-      if (headerWeekMatch && parseInt(headerWeekMatch[1]) === currentWeekNumber) {
-        return i;
-      }
+    // ALL_WEEKS_HEADERS are like "Wk1:...", "Wk2:..."
+    // getWeek returns 1 for the first week, etc. Array index is 0-based.
+    const currentWeekNumberOfYear = getWeek(now, { weekStartsOn: 1 }); // ISO week
+    const calculatedIndex = currentWeekNumberOfYear - 1;
+    if (calculatedIndex >= 0 && calculatedIndex < headers.length) {
+      return calculatedIndex;
     }
   } else if (interval === "Month") {
-    const currentMonthStr = formatDate(now, 'MMMM yyyy'); // e.g., "July 2024"
-    const index = headers.findIndex(h => h === currentMonthStr);
-    if (index !== -1) return index;
+    // ALL_MONTH_HEADERS are "January 2024", "February 2024", ...
+    // getMonth(now) returns 0 for January, 1 for February, etc. This directly matches the index.
+    const currentMonthIndex = getMonth(now);
+    if (currentMonthIndex >= 0 && currentMonthIndex < headers.length) {
+      return currentMonthIndex;
+    }
   }
-  return 0; // Fallback to the first period
+  return 0; // Fallback to the first period if current not found or out of range
 };
 
 
@@ -221,11 +120,9 @@ export default function CapacityInsightsPage() {
   const [selectedGroupBy, setSelectedGroupBy] = useState<GroupByOption>(filterOptions.groupByOptions[0]);
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
   
-  const [currentPeriodIndex, setCurrentPeriodIndex] = useState(() => {
-    const initialInterval: TimeInterval = "Week"; // Default to week for initial calculation
-    const headers = initialInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-    return getInitialPeriodIndex(initialInterval, headers);
-  });
+  // Initialize currentPeriodIndex to 0 to always start from the beginning
+  const [currentPeriodIndex, setCurrentPeriodIndex] = useState<number>(0);
+  
   const [currentDateDisplay, setCurrentDateDisplay] = useState("");
   const [displayedPeriodHeaders, setDisplayedPeriodHeaders] = useState<string[]>([]);
 
@@ -239,7 +136,7 @@ export default function CapacityInsightsPage() {
     rawValue: string
   ) => {
     const newValue = parseFloat(rawValue);
-    if (isNaN(newValue) && rawValue !== "" && rawValue !== "-") return; // Allow empty or negative sign temporarily
+    if (isNaN(newValue) && rawValue !== "" && rawValue !== "-") return;
 
     setRawCapacityDataSource(prevRawData => {
       const newData = JSON.parse(JSON.stringify(prevRawData)) as RawLoBCapacityEntry[];
@@ -267,7 +164,10 @@ export default function CapacityInsightsPage() {
         (teamEntry.periodicInputData[periodHeader] as any)[metricKey] = updatedTeamMix;
 
         const otherTeams = lobEntry.teams.filter(t => t.teamName !== teamNameToUpdate);
-        const currentTotalMixOfOtherTeams = otherTeams.reduce((sum, t) => sum + (t.periodicInputData[periodHeader]?.volumeMixPercentage ?? 0), 0);
+        const currentTotalMixOfOtherTeams = otherTeams.reduce((sum, t) => {
+            const teamPeriodData = t.periodicInputData[periodHeader];
+            return sum + (teamPeriodData?.volumeMixPercentage ?? 0);
+        }, 0);
         
         const remainingMixPercentage = 100 - updatedTeamMix;
 
@@ -276,8 +176,14 @@ export default function CapacityInsightsPage() {
             let distributedSum = 0;
             for (let i = 0; i < otherTeams.length; i++) {
               const team = otherTeams[i];
-              const originalShare = (team.periodicInputData[periodHeader]?.volumeMixPercentage ?? 0) / currentTotalMixOfOtherTeams;
+              const teamPeriodData = team.periodicInputData[periodHeader];
+              const originalShare = (teamPeriodData?.volumeMixPercentage ?? 0) / currentTotalMixOfOtherTeams;
               let newShare = remainingMixPercentage * originalShare;
+
+              if (!team.periodicInputData[periodHeader]) {
+                team.periodicInputData[periodHeader] = {};
+              }
+
               if (i === otherTeams.length - 1) { 
                 newShare = remainingMixPercentage - distributedSum;
               }
@@ -285,22 +191,40 @@ export default function CapacityInsightsPage() {
               (team.periodicInputData[periodHeader] as any).volumeMixPercentage = newShare;
               distributedSum += newShare;
             }
-            const finalSum = lobEntry.teams.reduce((sum, t) => sum + (t.periodicInputData[periodHeader]?.volumeMixPercentage ?? 0), 0);
+            // Final adjustment to ensure 100%
+            const finalSum = lobEntry.teams.reduce((sum, t) => {
+                const teamPeriodData = t.periodicInputData[periodHeader];
+                return sum + (teamPeriodData?.volumeMixPercentage ?? 0);
+            },0);
+
             if (finalSum !== 100 && otherTeams.length > 0) {
                 const diff = 100 - finalSum;
                 const lastOtherTeam = otherTeams[otherTeams.length -1];
+                 if (!lastOtherTeam.periodicInputData[periodHeader]) {
+                    lastOtherTeam.periodicInputData[periodHeader] = {};
+                  }
                 (lastOtherTeam.periodicInputData[periodHeader] as any).volumeMixPercentage = Math.max(0, Math.min(100, ((lastOtherTeam.periodicInputData[periodHeader] as any).volumeMixPercentage ?? 0) + diff));
             }
 
-          } else {
-            const mixPerOtherTeam = remainingMixPercentage / otherTeams.length;
+          } else { // If other teams had 0 mix, distribute remaining equally
+            const mixPerOtherTeam = otherTeams.length > 0 ? remainingMixPercentage / otherTeams.length : 0;
             otherTeams.forEach(team => {
+              if (!team.periodicInputData[periodHeader]) {
+                team.periodicInputData[periodHeader] = {};
+              }
               (team.periodicInputData[periodHeader] as any).volumeMixPercentage = Math.max(0, Math.min(100, parseFloat(mixPerOtherTeam.toFixed(1)) ));
             });
-            const finalSum = lobEntry.teams.reduce((sum, t) => sum + (t.periodicInputData[periodHeader]?.volumeMixPercentage ?? 0), 0);
+             // Final adjustment to ensure 100%
+            const finalSum = lobEntry.teams.reduce((sum, t) => {
+                const teamPeriodData = t.periodicInputData[periodHeader];
+                return sum + (teamPeriodData?.volumeMixPercentage ?? 0);
+            },0);
             if (finalSum !== 100 && otherTeams.length > 0) {
                 const diff = 100 - finalSum;
                  const lastOtherTeam = otherTeams[otherTeams.length -1];
+                 if (!lastOtherTeam.periodicInputData[periodHeader]) {
+                    lastOtherTeam.periodicInputData[periodHeader] = {};
+                  }
                 (lastOtherTeam.periodicInputData[periodHeader] as any).volumeMixPercentage = Math.max(0, Math.min(100, ((lastOtherTeam.periodicInputData[periodHeader] as any).volumeMixPercentage ?? 0) + diff));
             }
           }
@@ -369,16 +293,6 @@ export default function CapacityInsightsPage() {
               );
             });
             
-            // Removed team summary column logic as per requirement
-            // let teamSummaryMetrics = {...initialTeamPeriodMetricsForSum};
-            // periodsToDisplay.forEach(period => {
-            //    const currentPeriodMetrics = periodicTeamMetrics[period];
-            //    if (currentPeriodMetrics) {
-            //       teamSummaryMetrics = aggregateAndSummarizeMetrics(teamSummaryMetrics, currentPeriodMetrics) as TeamPeriodicMetrics;
-            //    }
-            // });
-            // periodicTeamMetrics[DYNAMIC_SUM_COLUMN_KEY] = teamSummaryMetrics; // DYNAMIC_SUM_COLUMN_KEY is removed
-            
             childrenTeamsDataRows.push({
               id: `${lobRawEntry.id}_${teamRawEntry.teamName.replace(/\s+/g, '-')}`,
               name: teamRawEntry.teamName,
@@ -407,8 +321,8 @@ export default function CapacityInsightsPage() {
                 });
                 const adherence = reqAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
                 lobPeriodicData[period] = {
-                    required: reqAgentMinutesSum,
-                    actual: actAgentMinutesSum,
+                    required: reqAgentMinutesSum, // These are aggregated agent minutes
+                    actual: actAgentMinutesSum,   // These are aggregated agent minutes
                     overUnder: actAgentMinutesSum - reqAgentMinutesSum,
                     adherence: adherence,
                     requiredHC: reqHcSum,
@@ -417,13 +331,6 @@ export default function CapacityInsightsPage() {
                 };
              });
              
-            // Removed LOB summary column logic
-            // let lobSummaryMetrics = {...initialAggregatedMetrics};
-            // periodsToDisplay.forEach(period => {
-            //    lobSummaryMetrics = aggregateAndSummarizeMetrics(lobSummaryMetrics, lobPeriodicData[period]) as AggregatedPeriodicMetrics;
-            // });
-            // lobPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = lobSummaryMetrics; // DYNAMIC_SUM_COLUMN_KEY is removed
-
             childrenLobsDataRows.push({
               id: lobRawEntry.id,
               name: lobName,
@@ -464,13 +371,6 @@ export default function CapacityInsightsPage() {
             };
           });
           
-          // Removed BU summary column logic
-          // let buSummaryMetrics = {...initialAggregatedMetrics};
-          // periodsToDisplay.forEach(period => {
-          //    buSummaryMetrics = aggregateAndSummarizeMetrics(buSummaryMetrics, buPeriodicData[period]) as AggregatedPeriodicMetrics;
-          // });
-          // buPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = buSummaryMetrics; // DYNAMIC_SUM_COLUMN_KEY is removed
-
           newDisplayData.push({
             id: buName,
             name: buName,
@@ -490,6 +390,9 @@ export default function CapacityInsightsPage() {
         if (lobRawEntriesForCurrentLob.length === 0) return;
         
         const childrenTeamsDataRows: CapacityDataRow[] = [];
+        // Use a consistent ID for LOB when grouped by LOB.
+        // The lobRawEntry.id might vary if multiple BUs have same LOB name and user selected "All" BUs.
+        // For top-level LOB grouping, the LOB name itself is a good unique ID.
         const lobIdForDisplay = lobName.toLowerCase().replace(/\s+/g, '-'); 
         
         lobRawEntriesForCurrentLob.forEach(lobRawEntry => { 
@@ -503,16 +406,6 @@ export default function CapacityInsightsPage() {
                 );
                 });
                 
-                // Removed team summary column logic
-                // let teamSummaryMetrics = {...initialTeamPeriodMetricsForSum};
-                // periodsToDisplay.forEach(period => {
-                //     const currentPeriodMetrics = periodicTeamMetrics[period];
-                //     if (currentPeriodMetrics) {
-                //         teamSummaryMetrics = aggregateAndSummarizeMetrics(teamSummaryMetrics, currentPeriodMetrics) as TeamPeriodicMetrics;
-                //     }
-                // });
-                // periodicTeamMetrics[DYNAMIC_SUM_COLUMN_KEY] = teamSummaryMetrics; // DYNAMIC_SUM_COLUMN_KEY is removed
-
                 childrenTeamsDataRows.push({
                   id: `${lobRawEntry.id}_${teamRawEntry.teamName.replace(/\s+/g, '-')}`, 
                   name: teamRawEntry.teamName,
@@ -553,13 +446,6 @@ export default function CapacityInsightsPage() {
                 };
             });
             
-            // Removed LOB summary column logic
-            // let lobSummaryMetrics = {...initialAggregatedMetrics};
-            // periodsToDisplay.forEach(period => {
-            //    lobSummaryMetrics = aggregateAndSummarizeMetrics(lobSummaryMetrics, lobPeriodicData[period]) as AggregatedPeriodicMetrics;
-            // });
-            // lobPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = lobSummaryMetrics; // DYNAMIC_SUM_COLUMN_KEY is removed
-
             newDisplayData.push({
                 id: lobIdForDisplay, 
                 name: lobName,
@@ -605,14 +491,13 @@ export default function CapacityInsightsPage() {
       const firstPeriod = currentBlock[0];
       const lastPeriod = currentBlock[currentBlock.length - 1];
       if (selectedTimeInterval === "Week") {
-        // Ensure the split targets the date part after "WkX: "
         const firstDateMatch = firstPeriod.match(/:\s*(\d{2}\/\d{2})/);
-        const lastDateMatch = lastPeriod.match(/-(\d{2}\/\d{2})$/); // Match end of string for the second date part
+        const lastDateMatch = lastPeriod.match(/-(\d{2}\/\d{2})$/); 
 
-        const firstDateStr = firstDateMatch ? firstDateMatch[1] : firstPeriod.split(' ')[1]?.split('-')[0] || firstPeriod;
+        const firstDateStr = firstDateMatch ? firstDateMatch[1] : firstPeriod.split(': ')[1]?.split('-')[0] || firstPeriod;
         const lastDateStr = lastDateMatch ? lastDateMatch[1] : lastPeriod.split('-').pop() || lastPeriod;
         
-        setCurrentDateDisplay(`${firstDateStr} - ${lastDateStr} (${getYear(new Date())})`);
+        setCurrentDateDisplay(`${firstDateStr} - ${lastDateStr} (${getYear(new Date(2024,0,1))})`); // Use 2024 for display consistency
       } else { 
         setCurrentDateDisplay(currentBlock.length === 1 ? firstPeriod : `${firstPeriod} - ${lastPeriod}`);
       }
@@ -639,8 +524,8 @@ export default function CapacityInsightsPage() {
   };
   
   useEffect(() => {
-    const headers = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-    setCurrentPeriodIndex(getInitialPeriodIndex(selectedTimeInterval, headers)); 
+    // When time interval changes, reset currentPeriodIndex to 0
+    setCurrentPeriodIndex(0); 
   }, [selectedTimeInterval]);
 
   return (
@@ -661,7 +546,7 @@ export default function CapacityInsightsPage() {
       <main className="flex-grow overflow-auto p-4">
         <CapacityTable 
           data={displayableCapacityData} 
-          periodHeaders={displayedPeriodHeaders} // Pass only the actual period headers
+          periodHeaders={displayedPeriodHeaders} 
           expandedItems={expandedItems}
           toggleExpand={toggleExpand}
           teamMetricDefinitions={TEAM_METRIC_ROW_DEFINITIONS}
@@ -672,4 +557,3 @@ export default function CapacityInsightsPage() {
     </div>
   );
 }
-
