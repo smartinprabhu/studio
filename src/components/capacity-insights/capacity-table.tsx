@@ -17,7 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowDown, ArrowUp, Minus, ChevronDown, Edit3 } from "lucide-react";
+import { ArrowDown, ArrowUp, Minus, ChevronDown, Edit3, Users } from "lucide-react";
 import type {
     CapacityDataRow,
     TeamPeriodicMetrics,
@@ -137,6 +137,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
   } else if (metricDef.key === "adherence" && metricData && (metricData as AggregatedPeriodicMetrics).required === 0) {
      tooltipText = `${item.name} - ${periodName}\nAdherence: N/A (Required Mins is 0)`;
   }
+
 
   const cellContent = <span className={`flex items-center justify-end ${textColor}`}>{displayValue} {icon}</span>;
 
@@ -269,7 +270,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
       observer.disconnect();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodHeaders, onVisiblePeriodsChange]);
+  }, [periodHeaders, onVisiblePeriodsChange]); // scrollContainerRef.current is stable
 
   const renderCapacityItemContent = useCallback((
     item: CapacityDataRow,
@@ -289,7 +290,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
           key={`${item.id}-${metricDef.key}`}
           item={item}
           metricDef={metricDef}
-          level={item.level + 1}
+          level={item.level + 1} // Metric rows are one level deeper
           periodHeaders={periodHeaders}
           onTeamMetricChange={onTeamMetricChange}
         />
@@ -311,23 +312,24 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
       >
         <TableCell
           className="p-0 sticky left-0 bg-card whitespace-nowrap"
-          style={{ zIndex: item.itemType === 'Team' ? 25 : 30 }}
+          style={{ 
+            zIndex: item.itemType === 'Team' ? 25 : (item.itemType === 'LOB' ? 30 : 35),
+            paddingLeft: `${item.level * 1.5 + (isExpandable ? 0 : 0.5)}rem` 
+          }} 
         >
           <button
             onClick={isExpandable ? () => toggleExpand(item.id) : undefined}
             disabled={!isExpandable}
-            className="py-3 px-4 font-semibold text-foreground hover:no-underline w-full text-left flex items-center gap-2"
-            style={{ paddingLeft: `${item.level * 1.5 + (isExpandable ? 0 : 0.5)}rem` }}
+            className="py-3 px-2 font-semibold text-foreground hover:no-underline w-full text-left flex items-center gap-2"
             aria-expanded={isExpandable ? isExpanded : undefined}
           >
             {isExpandable && (
               <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
             )}
-            {!isExpandable && item.level === 0 && <span className="w-4 shrink-0"></span>} {/* Adjust for non-expandable top-level items if needed */}
+            {!isExpandable && item.level === 0 && <span className="w-4 shrink-0"></span>}
             {item.name}
           </button>
         </TableCell>
-        {/* Ensure placeholder cells are always rendered for alignment */}
         {periodHeaders.map((ph) => (
              <TableCell key={`${item.id}-${ph}-nameplaceholder`} className={`${isExpandable ? 'py-3' : ''}`}></TableCell>
         ))}
@@ -336,26 +338,27 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 
     if (isExpanded) {
         if (item.itemType === 'Team') {
-            const itemMetricRows = renderCapacityItemContent(item);
-            rows.push(...itemMetricRows);
+            // For Teams, if expanded, show their metrics
+            const teamMetricRows = renderCapacityItemContent(item);
+            rows.push(...teamMetricRows);
         } else if (item.children && item.children.length > 0) {
             // For BU/LOB, if expanded, first show their aggregated metrics
             const aggregatedMetricRows = renderCapacityItemContent(item);
             rows.push(...aggregatedMetricRows);
-            // Then render their children
+            // Then render their children (LOBs or Teams)
             item.children.forEach(child => {
                 rows.push(...renderTableItem(child));
             });
-        } else { // BU/LOB with no children, but still show its metrics if it was marked 'expandable' and is expanded (though it has nothing to expand to)
+        } else { 
+            // BU/LOB with no children, but still show its metrics if it was marked 'expandable' and is expanded
             const itemMetricRows = renderCapacityItemContent(item);
             rows.push(...itemMetricRows);
         }
-    } else if (!isExpandable && item.itemType !== 'Team') { // BU/LOB with no children should always show its metrics
+    } else if (!isExpandable && item.itemType !== 'Team') { 
+        // BU/LOB with no children (or not expandable for other reasons) should always show its metrics
         const itemMetricRows = renderCapacityItemContent(item);
         rows.push(...itemMetricRows);
     }
-
-
     return rows;
   }, [expandedItems, periodHeaders, toggleExpand, renderCapacityItemContent]);
 
@@ -370,18 +373,34 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
         <Table className="min-w-full">
           <TableHeader className="sticky top-0 z-40 bg-card">
             <TableRow>
-              <TableHead className="sticky left-0 z-50 bg-card min-w-[320px] whitespace-nowrap shadow-sm px-4">
+              <TableHead className="sticky left-0 z-50 bg-card min-w-[320px] whitespace-nowrap shadow-sm px-4 py-2 align-middle">
                 {getCategoryHeader()}
               </TableHead>
               {periodHeaders.map((period, index) => {
-                const weekLabel = period.split(':')[0].replace("Wk", "W");
+                const parts = period.split(': ');
+                const weekLabelPart = parts[0].replace("Wk", "W");
+                let dateRangePart = "";
+                if (parts.length > 1) {
+                  const dateAndYearPart = parts[1];
+                  const match = dateAndYearPart.match(/^(\d{2}\/\d{2}-\d{2}\/\d{2})/);
+                  if (match) {
+                    dateRangePart = match[1];
+                  }
+                }
                 return (
                   <TableHead
                     key={period}
                     ref={el => { if(el) weekHeaderRefs.current[index] = el;}}
-                    className={`text-right min-w-[120px] whitespace-nowrap px-2`}
+                    className="text-right min-w-[100px] px-2 py-2 align-middle"
                   >
-                    {weekLabel}
+                    <div className="flex flex-col items-end">
+                      <span className="text-sm font-medium">{weekLabelPart}</span>
+                      {dateRangePart && (
+                        <span className="text-xs text-muted-foreground">
+                          ({dateRangePart})
+                        </span>
+                      )}
+                    </div>
                   </TableHead>
                 );
               })}
@@ -405,4 +424,3 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 };
 CapacityTableComponent.displayName = 'CapacityTableComponent';
 export const CapacityTable = React.memo(CapacityTableComponent);
-
