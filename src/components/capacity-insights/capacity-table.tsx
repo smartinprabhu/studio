@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -17,12 +17,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowDown, ArrowUp, Minus, ChevronDown, Edit3 } from "lucide-react"; 
-import type { 
-    CapacityDataRow, 
-    TeamPeriodicMetrics, 
+import { ArrowDown, ArrowUp, Minus, ChevronDown, Edit3 } from "lucide-react";
+import type {
+    CapacityDataRow,
+    TeamPeriodicMetrics,
     AggregatedPeriodicMetrics,
-    MetricDefinition, 
+    MetricDefinition,
     TeamMetricDefinitions,
     AggregatedMetricDefinitions,
     TeamName
@@ -30,7 +30,7 @@ import type {
 
 interface CapacityTableProps {
   data: CapacityDataRow[];
-  periodHeaders: string[]; 
+  periodHeaders: string[];
   expandedItems: Record<string, boolean>;
   toggleExpand: (id: string) => void;
   teamMetricDefinitions: TeamMetricDefinitions;
@@ -40,7 +40,7 @@ interface CapacityTableProps {
 }
 
 interface MetricCellContentProps {
-  item: CapacityDataRow; 
+  item: CapacityDataRow;
   metricData: TeamPeriodicMetrics | AggregatedPeriodicMetrics | undefined;
   metricDef: MetricDefinition;
   periodName: string;
@@ -61,7 +61,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
   const rawValue = (metricData as any)[metricDef.key];
 
   if (item.itemType === 'Team' && metricDef.isEditableForTeam) {
-    const teamName = item.name as TeamName; 
+    const teamName = item.name as TeamName;
     const lobId = item.lobId;
 
     if (!lobId) {
@@ -73,16 +73,16 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
       <Input
         type="number"
         value={rawValue === null || rawValue === undefined ? "" : String(rawValue)}
-        onChange={(e) => 
+        onChange={(e) =>
             onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, e.target.value)
         }
-        onBlur={(e) => { 
+        onBlur={(e) => {
             const val = parseFloat(e.target.value);
             if (isNaN(val) && e.target.value !== "" && e.target.value !== "-") {
-                 onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, ""); 
+                 onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, "");
             } else if (!isNaN(val)) {
                  onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, String(val));
-            } else if (e.target.value === "" && rawValue !== null) { 
+            } else if (e.target.value === "" && rawValue !== null && rawValue !== undefined) {
                  onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, "");
             }
         }}
@@ -91,7 +91,6 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
       />
     );
   }
-
 
   if (rawValue === null || rawValue === undefined) {
     return <Minus className="h-4 w-4 text-muted-foreground mx-auto" />;
@@ -106,29 +105,29 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
 
   if (metricDef.isPercentage) {
     displayValue = `${numValue.toFixed(1)}%`;
-  } else if (metricDef.isTime) { 
+  } else if (metricDef.isTime) {
     displayValue = `${numValue.toFixed(1)} min`;
-  } else if (metricDef.isHC || metricDef.key === 'moveIn' || metricDef.key === 'moveOut' || metricDef.key === 'newHireBatch' || metricDef.key === 'newHireProduction') {
-    displayValue = numValue.toFixed(metricDef.key === 'moveIn' || metricDef.key === 'moveOut' || metricDef.key === 'newHireBatch' || metricDef.key === 'newHireProduction' ? 0 : 2);
+  } else if (metricDef.isHC || ['moveIn', 'moveOut', 'newHireBatch', 'newHireProduction'].includes(metricDef.key as string) ) {
+    const digits = (['moveIn', 'moveOut', 'newHireBatch', 'newHireProduction'].includes(metricDef.key as string)) ? 0 : 2;
+    displayValue = numValue.toFixed(digits);
   } else if (typeof numValue === 'number' && !isNaN(numValue)) {
     const fractionDigits = (metricDef.key === "overUnder" || metricDef.key === "required" || metricDef.key === "actual") ? 0 : 1;
     displayValue = numValue.toLocaleString(undefined, {minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits});
   } else {
-    displayValue = String(rawValue); 
+    displayValue = String(rawValue);
   }
-  
-  tooltipText += displayValue;
 
+  tooltipText += displayValue;
 
   if (metricDef.key === "overUnder" || metricDef.key === "overUnderHC") {
     if (numValue < 0) {
-      textColor = "text-destructive"; 
+      textColor = "text-destructive";
       icon = <ArrowDown className="h-3 w-3 inline-block ml-1" />;
     } else if (numValue > 0) {
-      textColor = "text-primary"; 
+      textColor = "text-primary";
       icon = <ArrowUp className="h-3 w-3 inline-block ml-1" />;
     }
-     if (metricDef.key === "overUnder" && metricData && 'actual' in metricData && 'required' in metricData && typeof (metricData as AggregatedPeriodicMetrics).actual === 'number' && typeof (metricData as AggregatedPeriodicMetrics).required === 'number') {
+    if (metricDef.key === "overUnder" && metricData && 'actual' in metricData && 'required' in metricData && typeof (metricData as AggregatedPeriodicMetrics).actual === 'number' && typeof (metricData as AggregatedPeriodicMetrics).required === 'number') {
       tooltipText = `${item.name} - ${periodName}\nOver/Under (Mins) = Actual - Required\n${(metricData as AggregatedPeriodicMetrics).actual!.toLocaleString(undefined, {maximumFractionDigits:0})} - ${(metricData as AggregatedPeriodicMetrics).required!.toLocaleString(undefined, {maximumFractionDigits:0})} = ${numValue.toLocaleString(undefined, {maximumFractionDigits:0})}`;
     } else if (metricDef.key === "overUnderHC" && metricData && 'actualHC' in metricData && 'requiredHC' in metricData && typeof (metricData as TeamPeriodicMetrics | AggregatedPeriodicMetrics).actualHC === 'number' && typeof (metricData as TeamPeriodicMetrics | AggregatedPeriodicMetrics).requiredHC === 'number') {
       tooltipText = `${item.name} - ${periodName}\nOver/Under HC = Actual HC - Required HC\n${(metricData as TeamPeriodicMetrics | AggregatedPeriodicMetrics).actualHC!.toFixed(2)} - ${(metricData as TeamPeriodicMetrics | AggregatedPeriodicMetrics).requiredHC!.toFixed(2)} = ${numValue.toFixed(2)}`;
@@ -138,7 +137,6 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
   } else if (metricDef.key === "adherence" && metricData && (metricData as AggregatedPeriodicMetrics).required === 0) {
      tooltipText = `${item.name} - ${periodName}\nAdherence: N/A (Required Mins is 0)`;
   }
-
 
   const cellContent = <span className={`flex items-center justify-end ${textColor}`}>{displayValue} {icon}</span>;
 
@@ -158,11 +156,10 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
 });
 MetricCellContent.displayName = 'MetricCellContent';
 
-
 interface MetricRowProps {
   item: CapacityDataRow;
   metricDef: MetricDefinition;
-  level: number; 
+  level: number;
   periodHeaders: string[];
   onTeamMetricChange: CapacityTableProps['onTeamMetricChange'];
 }
@@ -187,17 +184,17 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
             if (value < 0) cellTextColor = "text-destructive";
             else if (value > 0) cellTextColor = "text-primary";
         }
-        
+
         return (
-          <TableCell 
-            key={`${item.id}-${metricDef.key}-${periodHeader}`} 
+          <TableCell
+            key={`${item.id}-${metricDef.key}-${periodHeader}`}
             className={`text-right tabular-nums ${cellTextColor} py-2 px-2`}
           >
-            <MetricCellContent 
+            <MetricCellContent
                 item={item}
-                metricData={metricForPeriod} 
-                metricDef={metricDef} 
-                periodName={periodHeader} 
+                metricData={metricForPeriod}
+                metricDef={metricDef}
+                periodName={periodHeader}
                 onTeamMetricChange={onTeamMetricChange}
             />
           </TableCell>
@@ -208,50 +205,18 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
 });
 MetricRow.displayName = 'MetricRow';
 
-const renderCapacityItemContent = (
-  item: CapacityDataRow,
-  periodHeaders: string[],
-  teamMetricDefs: TeamMetricDefinitions,
-  aggregatedMetricDefs: AggregatedMetricDefinitions,
-  onTeamMetricChange: CapacityTableProps['onTeamMetricChange']
-): React.ReactNode[] => {
-  const rows: React.ReactNode[] = [];
-  
-  let metricDefinitionsToUse: MetricDefinition[];
 
-  if (item.itemType === 'Team') {
-    metricDefinitionsToUse = teamMetricDefs;
-  } else { 
-    metricDefinitionsToUse = aggregatedMetricDefs;
-  }
-
-  metricDefinitionsToUse.forEach(metricDef => {
-    rows.push(
-      <MetricRow
-        key={`${item.id}-${metricDef.key}`}
-        item={item}
-        metricDef={metricDef}
-        level={item.level + 1} 
-        periodHeaders={periodHeaders}
-        onTeamMetricChange={onTeamMetricChange}
-      />
-    );
-  });
-  return rows;
-};
-
-
-const CapacityTableComponent: React.FC<CapacityTableProps> = ({ 
-    data, 
-    periodHeaders, 
-    expandedItems, 
-    toggleExpand, 
+const CapacityTableComponent: React.FC<CapacityTableProps> = ({
+    data,
+    periodHeaders,
+    expandedItems,
+    toggleExpand,
     teamMetricDefinitions,
     aggregatedMetricDefinitions,
     onTeamMetricChange,
     onVisiblePeriodsChange,
 }) => {
-  
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const weekHeaderRefs = useRef<(HTMLTableCellElement | null)[]>([]);
 
@@ -266,27 +231,29 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const visibleHeaders: string[] = [];
+        const visibleHeadersIndexes: number[] = [];
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             const headerIndex = weekHeaderRefs.current.findIndex(ref => ref === entry.target);
-            if (headerIndex !== -1 && periodHeaders[headerIndex]) {
-              visibleHeaders.push(periodHeaders[headerIndex]);
+            if (headerIndex !== -1) {
+              visibleHeadersIndexes.push(headerIndex);
             }
           }
         });
 
-        if (visibleHeaders.length > 0) {
-          visibleHeaders.sort((a, b) => periodHeaders.indexOf(a) - periodHeaders.indexOf(b));
-          onVisiblePeriodsChange(visibleHeaders[0], visibleHeaders[visibleHeaders.length - 1]);
+        if (visibleHeadersIndexes.length > 0) {
+          visibleHeadersIndexes.sort((a, b) => a - b);
+          const firstVisible = periodHeaders[visibleHeadersIndexes[0]];
+          const lastVisible = periodHeaders[visibleHeadersIndexes[visibleHeadersIndexes.length - 1]];
+          onVisiblePeriodsChange(firstVisible, lastVisible);
         } else {
           onVisiblePeriodsChange(null, null);
         }
       },
       {
         root: scrollContainerRef.current,
-        rootMargin: "0px", 
-        threshold: 0.5, 
+        rootMargin: "0px",
+        threshold: 0.5,
       }
     );
 
@@ -302,87 +269,122 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
       observer.disconnect();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodHeaders, onVisiblePeriodsChange]); 
+  }, [periodHeaders, onVisiblePeriodsChange]);
+
+  const renderCapacityItemContent = useCallback((
+    item: CapacityDataRow,
+  ): React.ReactNode[] => {
+    const rows: React.ReactNode[] = [];
+    let metricDefinitionsToUse: MetricDefinition[];
+
+    if (item.itemType === 'Team') {
+      metricDefinitionsToUse = teamMetricDefinitions;
+    } else {
+      metricDefinitionsToUse = aggregatedMetricDefinitions;
+    }
+
+    metricDefinitionsToUse.forEach(metricDef => {
+      rows.push(
+        <MetricRow
+          key={`${item.id}-${metricDef.key}`}
+          item={item}
+          metricDef={metricDef}
+          level={item.level + 1}
+          periodHeaders={periodHeaders}
+          onTeamMetricChange={onTeamMetricChange}
+        />
+      );
+    });
+    return rows;
+  }, [periodHeaders, teamMetricDefinitions, aggregatedMetricDefinitions, onTeamMetricChange]);
 
 
-  const renderTableItem = (item: CapacityDataRow): React.ReactNode[] => {
+  const renderTableItem = useCallback((item: CapacityDataRow): React.ReactNode[] => {
     const rows: React.ReactNode[] = [];
     const isExpanded = expandedItems[item.id] || false;
-
     const isExpandable = (item.itemType !== 'Team' && item.children && item.children.length > 0) || item.itemType === 'Team';
 
     rows.push(
-      <TableRow 
-        key={`${item.id}-name`} 
+      <TableRow
+        key={`${item.id}-name`}
         className={`${isExpandable ? 'bg-card-foreground/5 hover:bg-card-foreground/10' : 'hover:bg-card-foreground/5'} `}
       >
-        <TableCell 
-          colSpan={1} 
-          className="p-0 sticky left-0 z-30 bg-card whitespace-nowrap"
+        <TableCell
+          className="p-0 sticky left-0 bg-card whitespace-nowrap"
+          style={{ zIndex: item.itemType === 'Team' ? 25 : 30 }}
         >
           <button
             onClick={isExpandable ? () => toggleExpand(item.id) : undefined}
             disabled={!isExpandable}
             className="py-3 px-4 font-semibold text-foreground hover:no-underline w-full text-left flex items-center gap-2"
-            style={{ paddingLeft: `${item.level * 1.5 + (isExpandable ? 0.5 : 1)}rem` }} 
+            style={{ paddingLeft: `${item.level * 1.5 + (isExpandable ? 0 : 0.5)}rem` }}
             aria-expanded={isExpandable ? isExpanded : undefined}
           >
             {isExpandable && (
               <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
             )}
-            {!isExpandable && <span className="w-4 shrink-0"></span>} 
+            {!isExpandable && item.level === 0 && <span className="w-4 shrink-0"></span>} {/* Adjust for non-expandable top-level items if needed */}
             {item.name}
           </button>
         </TableCell>
-        {/* Render placeholder cells for each period header in the name row to maintain column alignment */}
+        {/* Ensure placeholder cells are always rendered for alignment */}
         {periodHeaders.map((ph) => (
-             <TableCell key={`${item.id}-${ph}-headerplaceholder`} className={`${ isExpandable ? 'py-3' : ''}`}></TableCell>
+             <TableCell key={`${item.id}-${ph}-nameplaceholder`} className={`${isExpandable ? 'py-3' : ''}`}></TableCell>
         ))}
       </TableRow>
     );
 
-    if (item.itemType === 'Team' && isExpanded) {
-        const itemMetricRows = renderCapacityItemContent(item, periodHeaders, teamMetricDefinitions, aggregatedMetricDefinitions, onTeamMetricChange);
-        rows.push(...itemMetricRows);
-    } 
-    else if (item.itemType !== 'Team' && (isExpanded || (!item.children || item.children.length === 0))) {
-        const itemMetricRows = renderCapacityItemContent(item, periodHeaders, teamMetricDefinitions, aggregatedMetricDefinitions, onTeamMetricChange);
+    if (isExpanded) {
+        if (item.itemType === 'Team') {
+            const itemMetricRows = renderCapacityItemContent(item);
+            rows.push(...itemMetricRows);
+        } else if (item.children && item.children.length > 0) {
+            // For BU/LOB, if expanded, first show their aggregated metrics
+            const aggregatedMetricRows = renderCapacityItemContent(item);
+            rows.push(...aggregatedMetricRows);
+            // Then render their children
+            item.children.forEach(child => {
+                rows.push(...renderTableItem(child));
+            });
+        } else { // BU/LOB with no children, but still show its metrics if it was marked 'expandable' and is expanded (though it has nothing to expand to)
+            const itemMetricRows = renderCapacityItemContent(item);
+            rows.push(...itemMetricRows);
+        }
+    } else if (!isExpandable && item.itemType !== 'Team') { // BU/LOB with no children should always show its metrics
+        const itemMetricRows = renderCapacityItemContent(item);
         rows.push(...itemMetricRows);
     }
 
-    if (item.itemType !== 'Team' && item.children && item.children.length > 0 && isExpanded) {
-      item.children.forEach(child => {
-        rows.push(...renderTableItem(child)); 
-      });
-    }
-    
+
     return rows;
-  };
+  }, [expandedItems, periodHeaders, toggleExpand, renderCapacityItemContent]);
 
   const getCategoryHeader = () => {
     if (data.length === 0) return 'Category / Metric';
     return 'BU / LoB / Team / Metric';
   };
 
-
   return (
     <TooltipProvider delayDuration={300}>
       <div ref={scrollContainerRef} className="overflow-x-auto relative border border-border rounded-md shadow-md">
         <Table className="min-w-full">
-          <TableHeader className="sticky top-0 z-40 bg-card"> 
+          <TableHeader className="sticky top-0 z-40 bg-card">
             <TableRow>
               <TableHead className="sticky left-0 z-50 bg-card min-w-[320px] whitespace-nowrap shadow-sm px-4">
                 {getCategoryHeader()}
               </TableHead>
-              {periodHeaders.map((period, index) => (
-                <TableHead 
-                  key={period} 
-                  ref={el => { if(el) weekHeaderRefs.current[index] = el;}}
-                  className={`text-right min-w-[120px] whitespace-nowrap px-2`}
-                >
-                  {period}
-                </TableHead>
-              ))}
+              {periodHeaders.map((period, index) => {
+                const weekLabel = period.split(':')[0].replace("Wk", "W");
+                return (
+                  <TableHead
+                    key={period}
+                    ref={el => { if(el) weekHeaderRefs.current[index] = el;}}
+                    className={`text-right min-w-[120px] whitespace-nowrap px-2`}
+                  >
+                    {weekLabel}
+                  </TableHead>
+                );
+              })}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -400,6 +402,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
       </div>
     </TooltipProvider>
   );
-}
+};
 CapacityTableComponent.displayName = 'CapacityTableComponent';
 export const CapacityTable = React.memo(CapacityTableComponent);
+

@@ -22,6 +22,7 @@ import {
   AGGREGATED_METRIC_ROW_DEFINITIONS,
   RawTeamDataEntry,
   LineOfBusinessName,
+  ALL_TEAM_NAMES,
 } from "@/components/capacity-insights/types";
 import type { MetricDefinition } from "@/components/capacity-insights/types";
 import { getWeek, getMonth, getYear, parse as dateParse, format as formatDateFn, startOfWeek, endOfWeek, isWithinInterval as isWithinIntervalFns } from 'date-fns';
@@ -88,6 +89,13 @@ const calculateTeamMetricsForPeriod = (
   };
 };
 
+const parseDateFromHeaderString = (dateMMDD: string, year: string): Date | null => {
+  if (!dateMMDD || !year) return null;
+  const [month, day] = dateMMDD.split('/').map(Number);
+  if (isNaN(month) || isNaN(day) || isNaN(parseInt(year))) return null;
+  return new Date(parseInt(year), month - 1, day); // Month is 0-indexed
+};
+
 const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): number => {
   const now = new Date();
   if (interval === "Week") {
@@ -106,24 +114,22 @@ const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): num
 
             const [startDateStr, endDateStr] = dateRangeMatch.slice(1);
             
-            // Create Date objects for the start and end of the week from the header
-            // Assuming MM/DD format and the headerYear
-            const [startMonth, startDay] = startDateStr.split('/').map(Number);
-            const [endMonth, endDay] = endDateStr.split('/').map(Number);
-
-            // Month is 0-indexed in JavaScript Date
-            const headerWeekStartDate = new Date(headerYear, startMonth - 1, startDay);
-            const headerWeekEndDate = new Date(headerYear, endMonth - 1, endDay, 23, 59, 59); // Include whole end day
-
-            if (isWithinIntervalFns(now, { start: headerWeekStartDate, end: headerWeekEndDate })) {
-                return i;
+            const headerWeekStartDate = parseDateFromHeaderString(startDateStr, String(headerYear));
+            const headerWeekEndDate = parseDateFromHeaderString(endDateStr, String(headerYear));
+            
+            if(headerWeekStartDate && headerWeekEndDate) {
+                 // Set end date to the end of the day for accurate comparison
+                const adjustedHeaderWeekEndDate = endOfWeek(headerWeekEndDate, { weekStartsOn: 1 });
+                if (isWithinIntervalFns(now, { start: headerWeekStartDate, end: adjustedHeaderWeekEndDate })) {
+                    return i;
+                }
             }
+
         } else {
-             // Fallback for WkX: prefix if full date parsing fails or isn't needed
             const weekNumMatch = header.match(/Wk(\d+):/);
             if (weekNumMatch) {
                 const headerWeekNum = parseInt(weekNumMatch[1]);
-                const currentWeekOfYear = getWeek(now, { weekStartsOn: 1 }); // ISO week
+                const currentWeekOfYear = getWeek(now, { weekStartsOn: 1 }); 
                  if (headerWeekNum === currentWeekOfYear && header.includes(`(${currentYear})`)) {
                     return i;
                 }
@@ -131,7 +137,7 @@ const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): num
         }
     }
   } else if (interval === "Month") {
-    const currentMonthStr = formatDateFn(now, "MMMM yyyy"); // e.g., "July 2024"
+    const currentMonthStr = formatDateFn(now, "MMMM yyyy"); 
     const foundIndex = headers.findIndex(h => h === currentMonthStr);
     if (foundIndex !== -1) return foundIndex;
   }
@@ -142,21 +148,22 @@ const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): num
 export default function CapacityInsightsPage() {
   const [rawCapacityDataSource, setRawCapacityDataSource] = useState<RawLoBCapacityEntry[]>(() => JSON.parse(JSON.stringify(initialMockRawCapacityData)));
   const [filterOptions, setFilterOptions] = useState(() => {
-    const initialBu = ALL_BUSINESS_UNITS[0] as BusinessUnitName; // Default to WFS
+    const initialBu = ALL_BUSINESS_UNITS[0] as BusinessUnitName; 
     const initialLobsForBu = BUSINESS_UNIT_CONFIG[initialBu].lonsOfBusiness;
     return {
-      ...mockFilterOptions,
       businessUnits: [...ALL_BUSINESS_UNITS],
       linesOfBusiness: [...initialLobsForBu],
+      teams: [...ALL_TEAM_NAMES],
     };
   });
   const [displayableCapacityData, setDisplayableCapacityData] = useState<CapacityDataRow[]>([]);
   
-  const [selectedBusinessUnit, setSelectedBusinessUnit] = useState<BusinessUnitName>(ALL_BUSINESS_UNITS[0]); // Default to WFS
+  const [selectedBusinessUnit, setSelectedBusinessUnit] = useState<BusinessUnitName>(ALL_BUSINESS_UNITS[0]); 
   const [selectedLineOfBusiness, setSelectedLineOfBusiness] = useState<string[]>(() => BUSINESS_UNIT_CONFIG[ALL_BUSINESS_UNITS[0]].lonsOfBusiness);
+  const [selectedTeams, setSelectedTeams] = useState<TeamName[]>([...ALL_TEAM_NAMES]);
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
   
-  const [currentPeriodIndex, setCurrentPeriodIndex] = useState<number>(0); 
+  const [currentPeriodIndex, setCurrentPeriodIndex] = useState<number>(0); // Start from Wk1
   
   const [currentDateDisplay, setCurrentDateDisplay] = useState("");
   const [dynamicDateDisplay, setDynamicDateDisplay] = useState<string | null>(null);
@@ -208,7 +215,7 @@ export default function CapacityInsightsPage() {
         const remainingMixPercentage = 100 - updatedTeamMix;
 
         if (otherTeams.length > 0) {
-          if (currentTotalMixOfOtherTeams > 0) { // Distribute proportionally
+          if (currentTotalMixOfOtherTeams > 0) { 
             let distributedSum = 0;
             for (let i = 0; i < otherTeams.length; i++) {
               const team = otherTeams[i];
@@ -220,14 +227,14 @@ export default function CapacityInsightsPage() {
                 team.periodicInputData[periodHeader] = {};
               }
 
-              if (i === otherTeams.length - 1 && otherTeams.length > 1) { // Ensure last team takes up slack for precision
+              if (i === otherTeams.length - 1 && otherTeams.length > 1) { 
                 newShare = remainingMixPercentage - distributedSum;
               }
               newShare = Math.max(0, Math.min(100, parseFloat(newShare.toFixed(1)) ) ); 
               (team.periodicInputData[periodHeader] as any).volumeMixPercentage = newShare;
               distributedSum += newShare;
             }
-          } else { // If other teams had 0 mix, distribute remaining equally
+          } else { 
             const mixPerOtherTeam = otherTeams.length > 0 ? parseFloat((remainingMixPercentage / otherTeams.length).toFixed(1)) : 0;
             let distributedSum = 0;
             otherTeams.forEach((team, i) => {
@@ -243,7 +250,7 @@ export default function CapacityInsightsPage() {
             });
           }
         }
-         // Final adjustment pass to ensure sum is exactly 100% due to floating point issues
+        
         let finalSum = lobEntry.teams.reduce((sum, t) => {
             const teamPeriodData = t.periodicInputData[periodHeader];
             return sum + (teamPeriodData?.volumeMixPercentage ?? 0);
@@ -251,7 +258,7 @@ export default function CapacityInsightsPage() {
         
         if (finalSum !== 100 && lobEntry.teams.length > 0) {
             const diff = 100 - finalSum;
-            const teamToAdjust = lobEntry.teams.find(t => t.teamName === teamNameToUpdate) || lobEntry.teams[0]; // Adjust the edited team or first team
+            const teamToAdjust = lobEntry.teams.find(t => t.teamName === teamNameToUpdate) || lobEntry.teams[0]; 
              if (!teamToAdjust.periodicInputData[periodHeader]) {
                 teamToAdjust.periodicInputData[periodHeader] = {};
               }
@@ -265,41 +272,40 @@ export default function CapacityInsightsPage() {
 
   const handleVisiblePeriodsChange = useCallback((firstVisibleHeader: string | null, lastVisibleHeader: string | null) => {
     if (selectedTimeInterval === "Month" || (!firstVisibleHeader && !lastVisibleHeader)) {
-      setDynamicDateDisplay(null); // For months, or if nothing is visible, fallback to pagination display
+      setDynamicDateDisplay(null); 
       return;
     }
 
     if (firstVisibleHeader && lastVisibleHeader) {
-      // Extract MM/DD from "WkX: MM/DD-MM/DD (YYYY)"
-      const firstDateMatch = firstVisibleHeader.match(/:\s*(\d{2}\/\d{2})/);
-      const firstYearMatch = firstVisibleHeader.match(/\((\d{4})\)/);
-      // Extract end MM/DD from "WkX: MM/DD-MM/DD (YYYY)"
-      const lastDateMatch = lastVisibleHeader.match(/-(\d{2}\/\d{2})/);
-      const lastYearMatch = lastVisibleHeader.match(/\((\d{4})\)/);
+      const firstDateFullMatch = firstVisibleHeader.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
+      const lastDateFullMatch = lastVisibleHeader.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
 
-      const firstDateStr = firstDateMatch ? firstDateMatch[1] : '';
-      const firstYearStr = firstYearMatch ? firstYearMatch[1] : '';
-      const lastDateStr = lastDateMatch ? lastDateMatch[1] : '';
-      const lastYearStr = lastYearMatch ? lastYearMatch[1] : '';
+      const startDateStr = firstDateFullMatch ? firstDateFullMatch[1] : ''; 
+      const startYearStr = firstDateFullMatch ? firstDateFullMatch[3] : '';
+      const endDateStr = lastDateFullMatch ? lastDateFullMatch[2] : '';    
+      const endYearStr = lastDateFullMatch ? lastDateFullMatch[3] : '';
+
+      const startDate = parseDateFromHeaderString(startDateStr, startYearStr);
+      const endDate = parseDateFromHeaderString(endDateStr, endYearStr);
       
-      if (firstDateStr && lastDateStr && firstYearStr && lastYearStr) {
-        if (firstYearStr === lastYearStr) {
-          setDynamicDateDisplay(`${firstDateStr} - ${lastDateStr} (${firstYearStr})`);
-        } else {
-          setDynamicDateDisplay(`${firstDateStr}/${firstYearStr} - ${lastDateStr}/${lastYearStr}`);
-        }
-      } else if (firstDateStr && firstYearStr) { // Only one week visible
-         setDynamicDateDisplay(`${firstDateStr} (${firstYearStr})`);
+      if (startDate && endDate) {
+         setDynamicDateDisplay(`${formatDateFn(startDate, "dd/MM")} - ${formatDateFn(endDate, "dd/MM")}`);
       } else {
         setDynamicDateDisplay(null); // Fallback
       }
-    } else if (firstVisibleHeader) {
-      const firstDateMatch = firstVisibleHeader.match(/:\s*(\d{2}\/\d{2})/);
-      const firstYearMatch = firstVisibleHeader.match(/\((\d{4})\)/);
-      const firstDateStr = firstDateMatch ? firstDateMatch[1] : '';
-      const firstYearStr = firstYearMatch ? firstYearStr[1] : '';
-       if (firstDateStr && firstYearStr) {
-         setDynamicDateDisplay(`${firstDateStr} (${firstYearStr})`);
+    } else if (firstVisibleHeader) { // Only one week visible
+       const firstDateFullMatch = firstVisibleHeader.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
+       if (firstDateFullMatch) {
+           const startDateStr = firstDateFullMatch[1];
+           const endDateStr = firstDateFullMatch[2];
+           const yearStr = firstDateFullMatch[3];
+           const startDate = parseDateFromHeaderString(startDateStr, yearStr);
+           const endDate = parseDateFromHeaderString(endDateStr, yearStr);
+           if (startDate && endDate) {
+               setDynamicDateDisplay(`${formatDateFn(startDate, "dd/MM")} - ${formatDateFn(endDate, "dd/MM")}`);
+           } else {
+               setDynamicDateDisplay(null);
+           }
        } else {
          setDynamicDateDisplay(null);
        }
@@ -310,9 +316,8 @@ export default function CapacityInsightsPage() {
 
   const handleBusinessUnitChange = useCallback((bu: BusinessUnitName) => {
     setSelectedBusinessUnit(bu);
-    // When BU changes, reset LOB filter to "All LOBs" for that BU
     const newLobsForBu = BUSINESS_UNIT_CONFIG[bu].lonsOfBusiness;
-    setSelectedLineOfBusiness([...newLobsForBu]); // Select all LOBs by default for the new BU
+    setSelectedLineOfBusiness([...newLobsForBu]); 
     setFilterOptions(prev => {
         const currentLobsForFilter = [...newLobsForBu];
         if (JSON.stringify(prev.linesOfBusiness) !== JSON.stringify(currentLobsForFilter)) {
@@ -326,11 +331,12 @@ export default function CapacityInsightsPage() {
       setSelectedLineOfBusiness(lobs);
   }, []);
 
+  const handleTeamSelectionChange = useCallback((teams: TeamName[]) => {
+    setSelectedTeams(teams);
+  }, []);
+
 
   useEffect(() => {
-    // Initialize LOB filters when component mounts or selectedBusinessUnit is first set
-    // This effect ensures filterOptions.linesOfBusiness and selectedLineOfBusiness are in sync
-    // with the current selectedBusinessUnit.
     const newLobsForBu = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
 
     setSelectedLineOfBusiness(prevSelectedLOBs => {
@@ -347,12 +353,16 @@ export default function CapacityInsightsPage() {
       const sortedNewLOBs = [...newLobsForBu].sort().join(',');
       const sortedPrevBUs = [...prevFilterOptions.businessUnits].sort().join(',');
       const sortedAllBUs = [...ALL_BUSINESS_UNITS].sort().join(',');
+      const sortedPrevTeams = [...prevFilterOptions.teams].sort().join(',');
+      const sortedAllTeams = [...ALL_TEAM_NAMES].sort().join(',');
 
-      if (sortedPrevLOBs !== sortedNewLOBs || sortedPrevBUs !== sortedAllBUs) {
+
+      if (sortedPrevLOBs !== sortedNewLOBs || sortedPrevBUs !== sortedAllBUs || sortedPrevTeams !== sortedAllTeams) {
         return {
           ...prevFilterOptions,
           businessUnits: [...ALL_BUSINESS_UNITS], 
           linesOfBusiness: [...newLobsForBu],
+          teams: [...ALL_TEAM_NAMES],
         };
       }
       return prevFilterOptions;
@@ -380,7 +390,6 @@ export default function CapacityInsightsPage() {
 
     if (buRawLobEntries.length === 0 && selectedLineOfBusiness.length === 0) { 
         setDisplayableCapacityData([]);
-        // Do not set expandedItems here to avoid loops
         return;
     }
 
@@ -394,7 +403,9 @@ export default function CapacityInsightsPage() {
         if (!lobRawEntry) return;
           
         const childrenTeamsDataRows: CapacityDataRow[] = [];
-        (lobRawEntry.teams || []).forEach(teamRawEntry => {
+        const filteredTeamsForLob = (lobRawEntry.teams || []).filter(team => selectedTeams.includes(team.teamName));
+
+        filteredTeamsForLob.forEach(teamRawEntry => {
             const periodicTeamMetrics: Record<string, TeamPeriodicMetrics> = {};
             periodsToDisplay.forEach(period => {
               periodicTeamMetrics[period] = calculateTeamMetricsForPeriod(
@@ -430,7 +441,7 @@ export default function CapacityInsightsPage() {
                     actHcSum += teamPeriodMetric.actualHC ?? 0;
                 }
             });
-            const adherence = reqAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
+            const adherence = reqAgentMinutesSum > 0 && actAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
             lobPeriodicData[period] = {
                 required: reqAgentMinutesSum, 
                 actual: actAgentMinutesSum,   
@@ -438,7 +449,7 @@ export default function CapacityInsightsPage() {
                 adherence: adherence,
                 requiredHC: reqHcSum,
                 actualHC: actHcSum,
-                overUnderHC: actHcSum - reqHcSum,
+                overUnderHC: actHcSum > 0 && reqHcSum > 0 ? actHcSum - reqHcSum : null,
             };
         });
              
@@ -468,7 +479,7 @@ export default function CapacityInsightsPage() {
                 actHcSum += lobPeriodMetric.actualHC ?? 0;
               }
         });
-        const adherence = reqAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
+        const adherence = reqAgentMinutesSum > 0 && actAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
         buPeriodicData[period] = {
             required: reqAgentMinutesSum,
             actual: actAgentMinutesSum,
@@ -476,7 +487,7 @@ export default function CapacityInsightsPage() {
             adherence: adherence,
             requiredHC: reqHcSum,
             actualHC: actHcSum,
-            overUnderHC: actHcSum - reqHcSum,
+            overUnderHC: actHcSum > 0 && reqHcSum > 0 ? actHcSum - reqHcSum : null,
         };
       });
       
@@ -491,14 +502,13 @@ export default function CapacityInsightsPage() {
     }
     
     setDisplayableCapacityData(newDisplayData);
-    // Removed setExpandedItems from here to prevent loops
   }, [
       selectedBusinessUnit, 
       selectedLineOfBusiness, 
+      selectedTeams,
       selectedTimeInterval, 
       currentPeriodIndex,
       rawCapacityDataSource,
-      expandedItems 
     ]);
 
 
@@ -508,7 +518,6 @@ export default function CapacityInsightsPage() {
 
 
   useEffect(() => {
-    // This effect updates the pagination-based date display
     const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
     const currentBlock = sourcePeriods.slice(currentPeriodIndex, currentPeriodIndex + NUM_PERIODS_DISPLAYED);
     if (currentBlock.length > 0) {
@@ -516,30 +525,23 @@ export default function CapacityInsightsPage() {
       const lastPeriodFull = currentBlock[currentBlock.length - 1];
 
       if (selectedTimeInterval === "Week") {
-        const firstDateMatch = firstPeriodFull.match(/:\s*(\d{2}\/\d{2})/);
-        const firstYearMatch = firstPeriodFull.match(/\((\d{4})\)/);
-        const lastDateFullMatch = lastPeriodFull.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
+        const firstWeekDataMatch = firstPeriodFull.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
+        const lastWeekDataMatch = lastPeriodFull.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
 
+        if (firstWeekDataMatch && lastWeekDataMatch) {
+            const displayStartDateStr = firstWeekDataMatch[1]; 
+            const displayStartYearStr = firstWeekDataMatch[3];
+            const displayEndDateStr = lastWeekDataMatch[2];   
+            const displayEndYearStr = lastWeekDataMatch[3]; 
 
-        const firstDateStr = firstDateMatch ? firstDateMatch[1] : '';
-        const firstYearStr = firstYearMatch ? firstYearMatch[1] : '';
-        let lastDateStr = '';
-        let lastYearStr = '';
+            const startDate = parseDateFromHeaderString(displayStartDateStr, displayStartYearStr);
+            const endDate = parseDateFromHeaderString(displayEndDateStr, displayEndYearStr);
 
-        if (lastDateFullMatch) {
-            lastDateStr = lastDateFullMatch[2]; 
-            lastYearStr = lastDateFullMatch[3]; 
-        }
-
-
-        if (firstDateStr && lastDateStr && firstYearStr && lastYearStr) {
-          if (firstYearStr === lastYearStr) {
-            setCurrentDateDisplay(`${firstDateStr} - ${lastDateStr} (${firstYearStr})`);
-          } else {
-            setCurrentDateDisplay(`${firstDateStr}/${firstYearStr} - ${lastDateStr}/${lastYearStr}`);
-          }
-        } else if (firstDateStr && firstYearStr) { 
-           setCurrentDateDisplay(`${firstDateStr} (${firstYearStr})`);
+            if (startDate && endDate) {
+                setCurrentDateDisplay(`${formatDateFn(startDate, "dd/MM")} - ${formatDateFn(endDate, "dd/MM")}`);
+            } else {
+                setCurrentDateDisplay("N/A");
+            }
         } else {
            setCurrentDateDisplay("N/A");
         }
@@ -562,7 +564,7 @@ export default function CapacityInsightsPage() {
       newIndex = Math.min(maxIndex, currentPeriodIndex + NUM_PERIODS_DISPLAYED);
     }
     setCurrentPeriodIndex(newIndex);
-    setDynamicDateDisplay(null); // Reset dynamic display on pagination
+    setDynamicDateDisplay(null); 
   };
 
   const toggleExpand = useCallback((id: string) => {
@@ -582,6 +584,8 @@ export default function CapacityInsightsPage() {
         onSelectBusinessUnit={handleBusinessUnitChange}
         selectedLineOfBusiness={selectedLineOfBusiness}
         onSelectLineOfBusiness={handleLOBChange}
+        selectedTeams={selectedTeams}
+        onSelectTeams={handleTeamSelectionChange}
         selectedTimeInterval={selectedTimeInterval}
         onSelectTimeInterval={(val) => setSelectedTimeInterval(val as TimeInterval)}
         currentDateDisplay={dynamicDateDisplay || currentDateDisplay}
@@ -602,5 +606,7 @@ export default function CapacityInsightsPage() {
     </div>
   );
 }
+
+    
 
     
