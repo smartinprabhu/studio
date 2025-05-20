@@ -47,19 +47,19 @@ export interface FilterOptions {
 export type GroupByOption = "Business Unit" | "Line of Business";
 
 export const ALL_WEEKS_HEADERS = Array.from({ length: 52 }, (_, i) => {
-  const startDate = new Date(2024, 0, 1 + i * 7);
+  const startDate = new Date(2024, 0, 1 + i * 7); // Ensure year is fixed for consistency
   const endDate = new Date(startDate.getTime() + 6 * 24 * 60 * 60 * 1000);
   const formatDate = (date: Date) => `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
   return `Wk${i + 1}: ${formatDate(startDate)}-${formatDate(endDate)}`;
 });
 
 export const ALL_MONTH_HEADERS = Array.from({ length: 12 }, (_, i) => {
-  const date = new Date(2024, i, 1);
+  const date = new Date(2024, i, 1); // Ensure year is fixed
   return date.toLocaleString('default', { month: 'long', year: 'numeric' }); // e.g. "January 2024"
 });
 
 export const NUM_PERIODS_DISPLAYED = 4;
-export const DYNAMIC_SUM_COLUMN_KEY = "summary";
+// DYNAMIC_SUM_COLUMN_KEY was removed as per previous request to remove summary column
 export type TimeInterval = "Week" | "Month";
 
 
@@ -131,7 +131,7 @@ export interface CapacityDataRow {
   name: string; // BU name, LOB name, or Team name
   level: number; // Indentation level
   itemType: 'BU' | 'LOB' | 'Team'; // To help in rendering and data access
-  periodicData: Record<string, AggregatedPeriodicMetrics | TeamPeriodicMetrics>; // Key is period header or DYNAMIC_SUM_COLUMN_KEY
+  periodicData: Record<string, AggregatedPeriodicMetrics | TeamPeriodicMetrics>; // Key is period header
   children?: CapacityDataRow[];
   lobId?: string; // Only for itemType 'Team', to help identify its parent LOB
 }
@@ -170,9 +170,6 @@ export const TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = [
 
 // For LOB/BU summary rows
 export const AGGREGATED_METRIC_ROW_DEFINITIONS: AggregatedMetricDefinitions = [
-  { key: "required", label: "Required (Agent Mins)" }, 
-  { key: "actual", label: "Actual (Agent Mins)" },     
-  { key: "overUnder", label: "Over/Under (Agent Mins)" }, 
   { key: "adherence", label: "Adherence (%)", isPercentage: true },
   { key: "requiredHC", label: "Required HC", isHC: true }, 
   { key: "actualHC", label: "Actual HC", isHC: true },    

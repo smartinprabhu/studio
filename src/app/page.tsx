@@ -15,7 +15,6 @@ import {
   AggregatedPeriodicMetrics,
   TeamPeriodicMetrics,
   NUM_PERIODS_DISPLAYED,
-  DYNAMIC_SUM_COLUMN_KEY,
   BUSINESS_UNIT_CONFIG,
   ALL_BUSINESS_UNITS, 
   GroupByOption,
@@ -25,6 +24,7 @@ import {
   RawTeamDataEntry,
 } from "@/components/capacity-insights/types";
 import type { MetricDefinition } from "@/components/capacity-insights/types";
+import { parse, isWithinInterval, startOfWeek, endOfWeek, getWeek, getMonth, getYear, format as formatDate } from 'date-fns';
 
 
 const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60; // 40 hours * 60 minutes
@@ -127,22 +127,15 @@ const aggregateAndSummarizeMetrics = (
     result.overUnderHC = null;
   }
   
-  // For team summary (summing TeamPeriodicMetrics for the DYNAMIC_SUM_COLUMN_KEY of a team row)
+  // For team summary (summing TeamPeriodicMetrics for a team row across periods)
+  // This part is less relevant now as we removed the per-row summary column.
+  // If we re-introduce it, these average/latest value assignments would be important.
   if ('aht' in m1 && 'aht' in m2) { // Indicates these are TeamPeriodicMetrics
-      // For team summary: AHT, Shrinkage, Occupancy, etc. are typically weighted averages or taken from the latest period, not direct sums.
-      // For the dynamic sum column, we'll represent these as averages or latest values rather than sums.
-      // Let's assume m2 is the current period being added to the sum.
-      // A proper weighted average would need total volume/minutes for weighting.
-      // For sum column, these averages are less meaningful. Let's make them null in sum for now or take from m2.
       result.aht = m2.aht; 
       result.shrinkagePercentage = m2.shrinkagePercentage;
       result.occupancyPercentage = m2.occupancyPercentage;
       result.backlogPercentage = m2.backlogPercentage;
       result.attritionPercentage = m2.attritionPercentage;
-      
-      // Volume mix percentage sum can be misleading for a team's own summary row.
-      // It sums to 100% across teams FOR A PERIOD, not for a team ACROSS periods.
-      // Let's set it to the value from m2 for the summary column of a team.
       result.volumeMixPercentage = m2.volumeMixPercentage; 
       
       result.moveIn = (m1.moveIn ?? 0) + (m2.moveIn ?? 0);
@@ -168,14 +161,53 @@ const initialAggregatedMetrics: AggregatedPeriodicMetrics = {
   requiredHC: 0, actualHC: 0, overUnderHC: 0,
 };
 
-const initialTeamPeriodMetricsForSum: TeamPeriodicMetrics = {
+const initialTeamPeriodMetricsForSum: TeamPeriodicMetrics = { // Still used as a template, though sum column is gone
   aht: null, shrinkagePercentage: null, occupancyPercentage: null, backlogPercentage: null,
-  attritionPercentage: null, volumeMixPercentage: 0, // Summing this for a team across periods might not be meaningful.
+  attritionPercentage: null, volumeMixPercentage: 0, 
   actualHC: 0, moveIn: 0, moveOut: 0,
   newHireBatch: 0, newHireProduction: 0, _productivity: null,
   _calculatedRequiredAgentMinutes: 0, _calculatedActualAgentMinutes: 0,
   requiredHC: 0, overUnderHC: 0,
-  // required, actual, overUnder, adherence are not directly on TeamPeriodicMetrics for display, but used in sum for LOB/BU
+};
+
+const getInitialPeriodIndex = (interval: TimeInterval, headers: string[]): number => {
+  const now = new Date();
+  if (interval === "Week") {
+    for (let i = 0; i < headers.length; i++) {
+      const header = headers[i];
+      // Try parsing date range first: "WkX: MM/DD-MM/DD"
+      const dateRangeMatch = header.match(/Wk\d+:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})/);
+      if (dateRangeMatch) {
+        const year = getYear(now); // Assuming 2024 for mock data consistency
+        const startDateStr = `${dateRangeMatch[1]}/${year}`;
+        const endDateStr = `${dateRangeMatch[2]}/${year}`;
+        try {
+          const startDate = parse(startDateStr, 'MM/dd/yyyy', new Date());
+          const endDate = parse(endDateStr, 'MM/dd/yyyy', new Date());
+          // Adjust end date to be end of day for correct interval checking
+          const endOfDayEndDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59);
+
+          if (isWithinInterval(now, { start: startDate, end: endOfDayEndDate })) {
+            return i;
+          }
+        } catch (e) {
+          console.warn(`Error parsing week date range: ${header}`, e);
+          // Fallback to week number match if parsing fails
+        }
+      }
+      // Fallback or primary for simple "WkX" headers if date parsing isn't robust
+      const currentWeekNumber = getWeek(now, { weekStartsOn: 1 }); // ISO week
+      const headerWeekMatch = header.match(/Wk(\d+)/);
+      if (headerWeekMatch && parseInt(headerWeekMatch[1]) === currentWeekNumber) {
+        return i;
+      }
+    }
+  } else if (interval === "Month") {
+    const currentMonthStr = formatDate(now, 'MMMM yyyy'); // e.g., "July 2024"
+    const index = headers.findIndex(h => h === currentMonthStr);
+    if (index !== -1) return index;
+  }
+  return 0; // Fallback to the first period
 };
 
 
@@ -189,7 +221,11 @@ export default function CapacityInsightsPage() {
   const [selectedGroupBy, setSelectedGroupBy] = useState<GroupByOption>(filterOptions.groupByOptions[0]);
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
   
-  const [currentPeriodIndex, setCurrentPeriodIndex] = useState(0);
+  const [currentPeriodIndex, setCurrentPeriodIndex] = useState(() => {
+    const initialInterval: TimeInterval = "Week"; // Default to week for initial calculation
+    const headers = initialInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
+    return getInitialPeriodIndex(initialInterval, headers);
+  });
   const [currentDateDisplay, setCurrentDateDisplay] = useState("");
   const [displayedPeriodHeaders, setDisplayedPeriodHeaders] = useState<string[]>([]);
 
@@ -217,7 +253,6 @@ export default function CapacityInsightsPage() {
       const teamEntry = lobEntry.teams[teamEntryIndex];
 
       if (!teamEntry.periodicInputData[periodHeader]) {
-        // Initialize period if it doesn't exist, though it should from mock data
         teamEntry.periodicInputData[periodHeader] = { 
           aht: null, shrinkagePercentage: null, occupancyPercentage: null, backlogPercentage: null, 
           attritionPercentage: null, volumeMixPercentage: null, actualHC: null, moveIn: null, 
@@ -225,37 +260,31 @@ export default function CapacityInsightsPage() {
         };
       }
       
-      // Update the specific metric
       (teamEntry.periodicInputData[periodHeader] as any)[metricKey] = isNaN(newValue) ? null : newValue;
 
-
-      // Dynamic Volume Mix Adjustment
       if (metricKey === 'volumeMixPercentage') {
         const updatedTeamMix = Math.max(0, Math.min(100, isNaN(newValue) ? 0 : newValue));
         (teamEntry.periodicInputData[periodHeader] as any)[metricKey] = updatedTeamMix;
 
         const otherTeams = lobEntry.teams.filter(t => t.teamName !== teamNameToUpdate);
         const currentTotalMixOfOtherTeams = otherTeams.reduce((sum, t) => sum + (t.periodicInputData[periodHeader]?.volumeMixPercentage ?? 0), 0);
-        const totalMixOfAllTeams = updatedTeamMix + currentTotalMixOfOtherTeams;
         
         const remainingMixPercentage = 100 - updatedTeamMix;
 
         if (otherTeams.length > 0) {
           if (currentTotalMixOfOtherTeams > 0) {
-            // Distribute proportionally
             let distributedSum = 0;
             for (let i = 0; i < otherTeams.length; i++) {
               const team = otherTeams[i];
               const originalShare = (team.periodicInputData[periodHeader]?.volumeMixPercentage ?? 0) / currentTotalMixOfOtherTeams;
               let newShare = remainingMixPercentage * originalShare;
-              if (i === otherTeams.length - 1) { // Last team takes the remainder to ensure sum is 100
+              if (i === otherTeams.length - 1) { 
                 newShare = remainingMixPercentage - distributedSum;
               }
-              newShare = Math.max(0, Math.min(100, parseFloat(newShare.toFixed(1)) ) ); // Clamp and fix precision
+              newShare = Math.max(0, Math.min(100, parseFloat(newShare.toFixed(1)) ) ); 
               (team.periodicInputData[periodHeader] as any).volumeMixPercentage = newShare;
               distributedSum += newShare;
             }
-            // Final check to ensure sum is 100 due to rounding
             const finalSum = lobEntry.teams.reduce((sum, t) => sum + (t.periodicInputData[periodHeader]?.volumeMixPercentage ?? 0), 0);
             if (finalSum !== 100 && otherTeams.length > 0) {
                 const diff = 100 - finalSum;
@@ -264,12 +293,10 @@ export default function CapacityInsightsPage() {
             }
 
           } else {
-            // Distribute equally if other teams had 0 mix
             const mixPerOtherTeam = remainingMixPercentage / otherTeams.length;
             otherTeams.forEach(team => {
               (team.periodicInputData[periodHeader] as any).volumeMixPercentage = Math.max(0, Math.min(100, parseFloat(mixPerOtherTeam.toFixed(1)) ));
             });
-             // Adjust last team for rounding
             const finalSum = lobEntry.teams.reduce((sum, t) => sum + (t.periodicInputData[periodHeader]?.volumeMixPercentage ?? 0), 0);
             if (finalSum !== 100 && otherTeams.length > 0) {
                 const diff = 100 - finalSum;
@@ -304,7 +331,7 @@ export default function CapacityInsightsPage() {
     setDisplayedPeriodHeaders(periodsToDisplay);
     const standardWorkMinutes = selectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
 
-    let relevantRawLobEntries = rawCapacityDataSource; // Use state data source
+    let relevantRawLobEntries = rawCapacityDataSource; 
     if (selectedBusinessUnit !== "All") {
       relevantRawLobEntries = relevantRawLobEntries.filter(d => d.bu === selectedBusinessUnit);
     }
@@ -313,7 +340,7 @@ export default function CapacityInsightsPage() {
     }
 
     const newDisplayData: CapacityDataRow[] = [];
-    const newExpandedItemsSeed: Record<string, boolean> = {}; // For default expansion
+    const newExpandedItemsSeed: Record<string, boolean> = {}; 
 
     if (selectedGroupBy === "Business Unit") {
       const busToProcess = selectedBusinessUnit === "All" ? ALL_BUSINESS_UNITS : [selectedBusinessUnit];
@@ -336,28 +363,29 @@ export default function CapacityInsightsPage() {
             const periodicTeamMetrics: Record<string, TeamPeriodicMetrics> = {};
             periodsToDisplay.forEach(period => {
               periodicTeamMetrics[period] = calculateTeamMetricsForPeriod(
-                teamRawEntry.periodicInputData[period] || {}, // Ensure exists
+                teamRawEntry.periodicInputData[period] || {}, 
                 lobRawEntry.lobTotalBaseRequiredMinutes[period],
                 standardWorkMinutes
               );
             });
             
-            let teamSummaryMetrics = {...initialTeamPeriodMetricsForSum};
-             periodsToDisplay.forEach(period => {
-                const currentPeriodMetrics = periodicTeamMetrics[period];
-                if (currentPeriodMetrics) {
-                   teamSummaryMetrics = aggregateAndSummarizeMetrics(teamSummaryMetrics, currentPeriodMetrics) as TeamPeriodicMetrics;
-                }
-             });
-            periodicTeamMetrics[DYNAMIC_SUM_COLUMN_KEY] = teamSummaryMetrics;
+            // Removed team summary column logic as per requirement
+            // let teamSummaryMetrics = {...initialTeamPeriodMetricsForSum};
+            // periodsToDisplay.forEach(period => {
+            //    const currentPeriodMetrics = periodicTeamMetrics[period];
+            //    if (currentPeriodMetrics) {
+            //       teamSummaryMetrics = aggregateAndSummarizeMetrics(teamSummaryMetrics, currentPeriodMetrics) as TeamPeriodicMetrics;
+            //    }
+            // });
+            // periodicTeamMetrics[DYNAMIC_SUM_COLUMN_KEY] = teamSummaryMetrics; // DYNAMIC_SUM_COLUMN_KEY is removed
             
             childrenTeamsDataRows.push({
               id: `${lobRawEntry.id}_${teamRawEntry.teamName.replace(/\s+/g, '-')}`,
               name: teamRawEntry.teamName,
-              level: 2, // BU -> LOB -> Team
+              level: 2, 
               itemType: 'Team',
               periodicData: periodicTeamMetrics,
-              lobId: lobRawEntry.id, // Pass LOB ID for edits
+              lobId: lobRawEntry.id, 
             });
           }); 
 
@@ -389,11 +417,12 @@ export default function CapacityInsightsPage() {
                 };
              });
              
-             let lobSummaryMetrics = {...initialAggregatedMetrics};
-             periodsToDisplay.forEach(period => {
-                lobSummaryMetrics = aggregateAndSummarizeMetrics(lobSummaryMetrics, lobPeriodicData[period]) as AggregatedPeriodicMetrics;
-             });
-             lobPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = lobSummaryMetrics;
+            // Removed LOB summary column logic
+            // let lobSummaryMetrics = {...initialAggregatedMetrics};
+            // periodsToDisplay.forEach(period => {
+            //    lobSummaryMetrics = aggregateAndSummarizeMetrics(lobSummaryMetrics, lobPeriodicData[period]) as AggregatedPeriodicMetrics;
+            // });
+            // lobPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = lobSummaryMetrics; // DYNAMIC_SUM_COLUMN_KEY is removed
 
             childrenLobsDataRows.push({
               id: lobRawEntry.id,
@@ -435,11 +464,12 @@ export default function CapacityInsightsPage() {
             };
           });
           
-          let buSummaryMetrics = {...initialAggregatedMetrics};
-          periodsToDisplay.forEach(period => {
-             buSummaryMetrics = aggregateAndSummarizeMetrics(buSummaryMetrics, buPeriodicData[period]) as AggregatedPeriodicMetrics;
-          });
-          buPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = buSummaryMetrics;
+          // Removed BU summary column logic
+          // let buSummaryMetrics = {...initialAggregatedMetrics};
+          // periodsToDisplay.forEach(period => {
+          //    buSummaryMetrics = aggregateAndSummarizeMetrics(buSummaryMetrics, buPeriodicData[period]) as AggregatedPeriodicMetrics;
+          // });
+          // buPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = buSummaryMetrics; // DYNAMIC_SUM_COLUMN_KEY is removed
 
           newDisplayData.push({
             id: buName,
@@ -460,9 +490,9 @@ export default function CapacityInsightsPage() {
         if (lobRawEntriesForCurrentLob.length === 0) return;
         
         const childrenTeamsDataRows: CapacityDataRow[] = [];
-        const lobIdForDisplay = lobName.toLowerCase().replace(/\s+/g, '-'); // Consistent ID for top-level LOB
+        const lobIdForDisplay = lobName.toLowerCase().replace(/\s+/g, '-'); 
         
-        lobRawEntriesForCurrentLob.forEach(lobRawEntry => { // This will usually be one, unless LOB name isn't unique across BUs
+        lobRawEntriesForCurrentLob.forEach(lobRawEntry => { 
             (lobRawEntry.teams || []).forEach(teamRawEntry => {
                 const periodicTeamMetrics: Record<string, TeamPeriodicMetrics> = {};
                 periodsToDisplay.forEach(period => {
@@ -473,14 +503,15 @@ export default function CapacityInsightsPage() {
                 );
                 });
                 
-                let teamSummaryMetrics = {...initialTeamPeriodMetricsForSum};
-                periodsToDisplay.forEach(period => {
-                    const currentPeriodMetrics = periodicTeamMetrics[period];
-                    if (currentPeriodMetrics) {
-                        teamSummaryMetrics = aggregateAndSummarizeMetrics(teamSummaryMetrics, currentPeriodMetrics) as TeamPeriodicMetrics;
-                    }
-                });
-                periodicTeamMetrics[DYNAMIC_SUM_COLUMN_KEY] = teamSummaryMetrics;
+                // Removed team summary column logic
+                // let teamSummaryMetrics = {...initialTeamPeriodMetricsForSum};
+                // periodsToDisplay.forEach(period => {
+                //     const currentPeriodMetrics = periodicTeamMetrics[period];
+                //     if (currentPeriodMetrics) {
+                //         teamSummaryMetrics = aggregateAndSummarizeMetrics(teamSummaryMetrics, currentPeriodMetrics) as TeamPeriodicMetrics;
+                //     }
+                // });
+                // periodicTeamMetrics[DYNAMIC_SUM_COLUMN_KEY] = teamSummaryMetrics; // DYNAMIC_SUM_COLUMN_KEY is removed
 
                 childrenTeamsDataRows.push({
                   id: `${lobRawEntry.id}_${teamRawEntry.teamName.replace(/\s+/g, '-')}`, 
@@ -488,7 +519,7 @@ export default function CapacityInsightsPage() {
                   level: 1, 
                   itemType: 'Team',
                   periodicData: periodicTeamMetrics,
-                  lobId: lobRawEntry.id, // Pass LOB ID for edits
+                  lobId: lobRawEntry.id, 
                 });
             });
         });
@@ -522,14 +553,15 @@ export default function CapacityInsightsPage() {
                 };
             });
             
-            let lobSummaryMetrics = {...initialAggregatedMetrics};
-            periodsToDisplay.forEach(period => {
-                lobSummaryMetrics = aggregateAndSummarizeMetrics(lobSummaryMetrics, lobPeriodicData[period]) as AggregatedPeriodicMetrics;
-            });
-            lobPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = lobSummaryMetrics;
+            // Removed LOB summary column logic
+            // let lobSummaryMetrics = {...initialAggregatedMetrics};
+            // periodsToDisplay.forEach(period => {
+            //    lobSummaryMetrics = aggregateAndSummarizeMetrics(lobSummaryMetrics, lobPeriodicData[period]) as AggregatedPeriodicMetrics;
+            // });
+            // lobPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = lobSummaryMetrics; // DYNAMIC_SUM_COLUMN_KEY is removed
 
             newDisplayData.push({
-                id: lobIdForDisplay, // Use the consistent LOB ID
+                id: lobIdForDisplay, 
                 name: lobName,
                 level: 0,
                 itemType: 'LOB',
@@ -542,7 +574,6 @@ export default function CapacityInsightsPage() {
     }
     
     setDisplayableCapacityData(newDisplayData);
-    // Preserve existing expansions, only set defaults if not already set
     setExpandedItems(prev => {
         const updatedExpanded = {...prev};
         Object.keys(newExpandedItemsSeed).forEach(key => {
@@ -558,7 +589,7 @@ export default function CapacityInsightsPage() {
       selectedGroupBy, 
       selectedTimeInterval, 
       currentPeriodIndex,
-      rawCapacityDataSource // Add as dependency
+      rawCapacityDataSource 
     ]);
 
 
@@ -574,9 +605,14 @@ export default function CapacityInsightsPage() {
       const firstPeriod = currentBlock[0];
       const lastPeriod = currentBlock[currentBlock.length - 1];
       if (selectedTimeInterval === "Week") {
-        const firstDateStr = firstPeriod.split(': ')[1]?.split('-')[0] ?? firstPeriod;
-        const lastDateStr = lastPeriod.split(': ')[1]?.split('-')[1] ?? lastPeriod;
-        setCurrentDateDisplay(`${firstDateStr} - ${lastDateStr} (2024)`);
+        // Ensure the split targets the date part after "WkX: "
+        const firstDateMatch = firstPeriod.match(/:\s*(\d{2}\/\d{2})/);
+        const lastDateMatch = lastPeriod.match(/-(\d{2}\/\d{2})$/); // Match end of string for the second date part
+
+        const firstDateStr = firstDateMatch ? firstDateMatch[1] : firstPeriod.split(' ')[1]?.split('-')[0] || firstPeriod;
+        const lastDateStr = lastDateMatch ? lastDateMatch[1] : lastPeriod.split('-').pop() || lastPeriod;
+        
+        setCurrentDateDisplay(`${firstDateStr} - ${lastDateStr} (${getYear(new Date())})`);
       } else { 
         setCurrentDateDisplay(currentBlock.length === 1 ? firstPeriod : `${firstPeriod} - ${lastPeriod}`);
       }
@@ -603,7 +639,8 @@ export default function CapacityInsightsPage() {
   };
   
   useEffect(() => {
-    setCurrentPeriodIndex(0); 
+    const headers = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
+    setCurrentPeriodIndex(getInitialPeriodIndex(selectedTimeInterval, headers)); 
   }, [selectedTimeInterval]);
 
   return (
@@ -624,10 +661,9 @@ export default function CapacityInsightsPage() {
       <main className="flex-grow overflow-auto p-4">
         <CapacityTable 
           data={displayableCapacityData} 
-          periodHeaders={[...displayedPeriodHeaders, DYNAMIC_SUM_COLUMN_KEY]} 
+          periodHeaders={displayedPeriodHeaders} // Pass only the actual period headers
           expandedItems={expandedItems}
           toggleExpand={toggleExpand}
-          dynamicSumKey={DYNAMIC_SUM_COLUMN_KEY}
           teamMetricDefinitions={TEAM_METRIC_ROW_DEFINITIONS}
           aggregatedMetricDefinitions={AGGREGATED_METRIC_ROW_DEFINITIONS}
           onTeamMetricChange={handleTeamMetricChange}
@@ -636,3 +672,4 @@ export default function CapacityInsightsPage() {
     </div>
   );
 }
+

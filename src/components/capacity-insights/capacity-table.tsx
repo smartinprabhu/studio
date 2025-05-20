@@ -27,14 +27,12 @@ import type {
     AggregatedMetricDefinitions,
     TeamName
 } from "./types";
-import { DYNAMIC_SUM_COLUMN_KEY } from "./types";
 
 interface CapacityTableProps {
   data: CapacityDataRow[];
   periodHeaders: string[]; 
   expandedItems: Record<string, boolean>;
   toggleExpand: (id: string) => void;
-  dynamicSumKey: string;
   teamMetricDefinitions: TeamMetricDefinitions;
   aggregatedMetricDefinitions: AggregatedMetricDefinitions;
   onTeamMetricChange: (lobId: string, teamName: TeamName, periodHeader: string, metricKey: keyof TeamPeriodicMetrics, newValue: string) => void;
@@ -55,7 +53,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
   metricDef,
   periodName,
   onTeamMetricChange,
-  isSumColumn,
+  isSumColumn, // Though sum column is removed, keeping prop if other logic might use it later, but current logic ignores it.
 }) => {
   if (!metricData) {
     return <Minus className="h-4 w-4 text-muted-foreground mx-auto" />;
@@ -162,10 +160,9 @@ interface MetricRowProps {
   level: number; 
   periodHeaders: string[];
   onTeamMetricChange: CapacityTableProps['onTeamMetricChange'];
-  isSumColumn: (periodHeader: string) => boolean;
 }
 
-const MetricRow: React.FC<MetricRowProps> = ({ item, metricDef, level, periodHeaders, onTeamMetricChange, isSumColumn }) => {
+const MetricRow: React.FC<MetricRowProps> = ({ item, metricDef, level, periodHeaders, onTeamMetricChange }) => {
   return (
     <TableRow className="hover:bg-card-foreground/5">
       <TableCell
@@ -187,7 +184,7 @@ const MetricRow: React.FC<MetricRowProps> = ({ item, metricDef, level, periodHea
         return (
           <TableCell 
             key={`${item.id}-${metricDef.key}-${periodHeader}`} 
-            className={`text-right tabular-nums ${cellTextColor} ${isSumColumn(periodHeader) ? 'font-semibold bg-muted/30' : ''} py-2 px-2`}
+            className={`text-right tabular-nums ${cellTextColor} py-2 px-2`}
           >
             <MetricCellContent 
                 item={item}
@@ -195,7 +192,7 @@ const MetricRow: React.FC<MetricRowProps> = ({ item, metricDef, level, periodHea
                 metricDef={metricDef} 
                 periodName={periodHeader} 
                 onTeamMetricChange={onTeamMetricChange}
-                isSumColumn={isSumColumn(periodHeader)}
+                isSumColumn={false} // Sum column logic removed
             />
           </TableCell>
         );
@@ -207,7 +204,6 @@ const MetricRow: React.FC<MetricRowProps> = ({ item, metricDef, level, periodHea
 const renderCapacityItemContent = (
   item: CapacityDataRow,
   periodHeaders: string[],
-  isSumColumn: (ph: string) => boolean,
   teamMetricDefs: TeamMetricDefinitions,
   aggregatedMetricDefs: AggregatedMetricDefinitions,
   onTeamMetricChange: CapacityTableProps['onTeamMetricChange']
@@ -231,7 +227,6 @@ const renderCapacityItemContent = (
         level={item.level + 1} 
         periodHeaders={periodHeaders}
         onTeamMetricChange={onTeamMetricChange}
-        isSumColumn={isSumColumn}
       />
     );
   });
@@ -244,14 +239,11 @@ export function CapacityTable({
     periodHeaders, 
     expandedItems, 
     toggleExpand, 
-    dynamicSumKey,
     teamMetricDefinitions,
     aggregatedMetricDefinitions,
     onTeamMetricChange
 }: CapacityTableProps) {
   
-  const isSumColumn = (periodHeader: string) => periodHeader === dynamicSumKey || periodHeader.includes("Total");
-
   const renderTableItem = (item: CapacityDataRow): React.ReactNode[] => {
     const rows: React.ReactNode[] = [];
     const isExpanded = expandedItems[item.id] || false;
@@ -288,16 +280,15 @@ export function CapacityTable({
            if (item.children && item.children.length > 0 && index === 0) { 
              return null;
            }
-            const isHeaderSumCol = isSumColumn(ph);
              return (
-                <TableCell key={`${item.id}-${ph}-headerplaceholder`} className={`${isHeaderSumCol ? 'font-semibold bg-muted/30' : ''} ${ (item.children && item.children.length > 0) ? 'py-3' : ''}`}></TableCell>
+                <TableCell key={`${item.id}-${ph}-headerplaceholder`} className={`${ (item.children && item.children.length > 0) ? 'py-3' : ''}`}></TableCell>
              );
         })}
       </TableRow>
     );
 
     if (isExpanded || !item.children || item.children.length === 0) {
-        const itemMetricRows = renderCapacityItemContent(item, periodHeaders, isSumColumn, teamMetricDefinitions, aggregatedMetricDefinitions, onTeamMetricChange);
+        const itemMetricRows = renderCapacityItemContent(item, periodHeaders, teamMetricDefinitions, aggregatedMetricDefinitions, onTeamMetricChange);
         rows.push(...itemMetricRows);
     }
 
@@ -332,10 +323,9 @@ export function CapacityTable({
               {periodHeaders.map((period) => (
                 <TableHead 
                   key={period} 
-                  className={`text-right min-w-[120px] whitespace-nowrap px-2 ${isSumColumn(period) ? 'font-bold bg-muted/50 sticky right-0 z-30 shadow-sm' : ''}`}
-                  style={isSumColumn(period) ? { right: 0 } : {}} 
+                  className={`text-right min-w-[120px] whitespace-nowrap px-2`}
                 >
-                  {period.replace(DYNAMIC_SUM_COLUMN_KEY, "Summary")}
+                  {period}
                 </TableHead>
               ))}
             </TableRow>
