@@ -1,61 +1,45 @@
 
-import type { CapacityDataRow, FilterOptions } from "./types";
-import { WEEKS_HEADERS } from "./types";
+import type { FilterOptions, RawLoBCapacityEntry, BusinessUnitName, MetricValues } from "./types";
+import { ALL_BUSINESS_UNITS, BUSINESS_UNIT_CONFIG, ALL_WEEKS_HEADERS, ALL_MONTH_HEADERS } from "./types";
 
-const generateWeeklyData = (): Record<string, { required: number | null; actual: number | null }> => {
-  const data: Record<string, { required: number | null; actual: number | null }> = {};
-  WEEKS_HEADERS.forEach(week => {
-    data[week] = {
-      required: Math.floor(Math.random() * 200) + 50,
-      actual: Math.floor(Math.random() * 220) + 40,
-    };
+// Helper to generate random metric values for a given set of periods
+const generatePeriodicMetrics = (periods: string[]): Record<string, MetricValues> => {
+  const metrics: Record<string, MetricValues> = {};
+  periods.forEach(period => {
+    const required = Math.floor(Math.random() * 20000) + 5000; // Agent-minutes
+    const actual = Math.floor(required * (Math.random() * 0.4 + 0.8)); // Actual is 80% to 120% of required
+    if (Math.random() < 0.1) { // 10% chance of no data for a period
+        metrics[period] = { required: null, actual: null };
+    } else {
+        metrics[period] = { required, actual };
+    }
   });
-  return data;
+  return metrics;
 };
 
-export const mockCapacityData: CapacityDataRow[] = [
-  {
-    id: "lobTotal",
-    name: "Selected LoB's Total",
-    level: 0,
-    weeklyData: generateWeeklyData(),
-  },
-  {
-    id: "inventoryManagement",
-    name: "INVENTORY MANAGEMENT",
-    level: 0,
-    weeklyData: {}, // Aggregated or placeholder
-    children: [
-      {
-        id: "inhouseBpo",
-        name: "Inhouse BPO",
-        level: 1,
-        weeklyData: generateWeeklyData(),
-        children: [
-            // Could have sub- BPOs or teams here if needed
-        ]
-      },
-      {
-        id: "bpo1",
-        name: "BPO #1",
-        level: 1,
-        weeklyData: generateWeeklyData(),
-      },
-      {
-        id: "bpo2",
-        name: "BPO #2 (Example with no data)",
-        level: 1,
-        weeklyData: WEEKS_HEADERS.reduce((acc, week) => {
-          acc[week] = { required: null, actual: null };
-          return acc;
-        }, {} as Record<string, { required: number | null; actual: number | null }>),
-      }
-    ],
-  },
-];
+// We'll generate data for a subset of weeks and months for mock purposes
+const mockWeekPeriods = ALL_WEEKS_HEADERS.slice(0, 20); // Use first 20 weeks for mock data
+const mockMonthPeriods = ALL_MONTH_HEADERS.slice(0, 6); // Use first 6 months
+
+export const mockRawCapacityData: RawLoBCapacityEntry[] = [];
+
+ALL_BUSINESS_UNITS.forEach(bu => {
+  BUSINESS_UNIT_CONFIG[bu].lonsOfBusiness.forEach(lob => {
+    mockRawCapacityData.push({
+      id: `${bu.toLowerCase().replace(/\s+/g, '-')}_${lob.toLowerCase().replace(/\s+/g, '-')}`,
+      bu: bu,
+      lob: lob,
+      periodicMetrics: generatePeriodicMetrics(mockWeekPeriods), // Generate weekly data
+      // Note: In a real app, you'd have separate data sources or transformations for monthly data
+      // For this mock, monthly data will be derived or use a separate set if needed.
+      // For now, page.tsx will aggregate weekly data if "Month" interval is selected.
+    });
+  });
+});
+
 
 export const mockFilterOptions: FilterOptions = {
-  businessUnits: ["BU Alpha", "BU Beta", "BU Gamma"],
-  linesOfBusiness: ["LoB X", "LoB Y", "LoB Z"],
-  groupByOptions: ["Agent", "Team", "Skill"],
+  businessUnits: [...ALL_BUSINESS_UNITS, "All" as any], // "All" is a special case
+  linesOfBusiness: [], // Will be populated dynamically based on selected BU
+  groupByOptions: ["Business Unit", "Line of Business"],
 };

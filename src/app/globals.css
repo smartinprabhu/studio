@@ -4,7 +4,7 @@
 @tailwind utilities;
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
 @layer base {
@@ -45,6 +45,9 @@ body {
 
     --radius: 0.5rem;
 
+    --font-geist-sans: "Geist Variable", sans-serif;
+    --font-geist-mono: "Geist Mono Variable", monospace;
+
     --sidebar-background: 215 16% 18%; /* #262D34 */
     --sidebar-foreground: 210 17% 90%;
     --sidebar-primary: 220 83% 64%; /* #558BEE */
@@ -55,7 +58,6 @@ body {
     --sidebar-ring: 220 83% 70%; /* #73A2F1 */
   }
 
-  /* Remove .dark selector as dark theme is default */
 }
 
 @layer base {
