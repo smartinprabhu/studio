@@ -18,6 +18,7 @@ import {
   NUM_PERIODS_DISPLAYED,
   DYNAMIC_SUM_COLUMN_KEY,
   BUSINESS_UNIT_CONFIG,
+  ALL_BUSINESS_UNITS, // Added import
   GroupByOption
 } from "@/components/capacity-insights/types";
 import { parse, differenceInCalendarWeeks, startOfWeek, endOfWeek, format, addWeeks, getMonth, getYear, startOfMonth, endOfMonth, addMonths } from 'date-fns';
