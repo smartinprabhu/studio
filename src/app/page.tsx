@@ -22,6 +22,7 @@ import {
   RawTeamDataEntry,
   LineOfBusinessName,
   ALL_TEAM_NAMES,
+  NUM_PERIODS_DISPLAYED
 } from "@/components/capacity-insights/types";
 import type { MetricDefinition, FilterOptions } from "@/components/capacity-insights/types";
 import { getWeek, getMonth, getYear, parse as dateParse, format as formatDateFn, startOfWeek, endOfWeek, isWithinInterval as isWithinIntervalFns, setDate, addDays, startOfMonth, endOfMonth, isBefore, isAfter } from 'date-fns';
@@ -73,6 +74,9 @@ const calculateTeamMetricsForPeriod = (
   } else if (requiredHC === 0 && actualHC !== null && actualHC > 0) { 
      calculatedActualAgentMinutes = 0; 
   } else if (requiredHC === null && actualHC !== null && actualHC > 0) {
+    // This case means we have actual HC but cannot determine required HC to derive actual minutes.
+    // Actual agent minutes might be better derived from actualHC * standardWorkMinutes * productivity factors
+    // For now, let's keep it null if requiredHC is null.
     calculatedActualAgentMinutes = null;
   } else if (actualHC === 0) {
     calculatedActualAgentMinutes = 0;
@@ -92,10 +96,9 @@ const parseDateFromHeaderStringMMDDYYYY = (dateMMDD: string, year: string): Date
   if (!dateMMDD || !year) return null;
   const [month, day] = dateMMDD.split('/').map(Number);
   if (isNaN(month) || isNaN(day) || isNaN(parseInt(year))) return null;
-  // Dates are 1-indexed for month, 0-indexed in JS Date
   const parsedDate = new Date(parseInt(year), month - 1, day); 
   if (parsedDate.getFullYear() !== parseInt(year) || parsedDate.getMonth() !== month - 1 || parsedDate.getDate() !== day) {
-    return null; // Invalid date, e.g. 02/30
+    return null; 
   }
   return parsedDate;
 };
@@ -123,6 +126,16 @@ const getHeaderDateRange = (header: string, interval: TimeInterval): { startDate
   return { startDate: null, endDate: null };
 };
 
+const getDefaultDateRange = (interval: TimeInterval): DateRange => {
+  const headers = interval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
+  const numPeriods = interval === "Week" ? Math.min(11, headers.length -1) : Math.min(2, headers.length-1); // Show 12 weeks or 3 months
+
+  const fromDate = getHeaderDateRange(headers[0], interval).startDate;
+  const toDate = getHeaderDateRange(headers[numPeriods], interval).endDate;
+  
+  return { from: fromDate || undefined, to: toDate || undefined };
+};
+
 
 export default function CapacityInsightsPage() {
   const [rawCapacityDataSource, setRawCapacityDataSource] = useState<RawLoBCapacityEntry[]>(() => JSON.parse(JSON.stringify(initialMockRawCapacityData)));
@@ -143,21 +156,7 @@ export default function CapacityInsightsPage() {
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
   
   const [displayedPeriodHeaders, setDisplayedPeriodHeaders] = useState<string[]>([]);
-  
-  const getDefaultDateRange = (interval: TimeInterval): DateRange => {
-    const headers = interval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-    const fromDate = getHeaderDateRange(headers[0], interval).startDate;
-    let toDate;
-    if (interval === "Week") {
-      toDate = getHeaderDateRange(headers[Math.min(11, headers.length - 1)], interval).endDate;
-    } else { // Month
-      toDate = getHeaderDateRange(headers[Math.min(2, headers.length - 1)], interval).endDate;
-    }
-    return { from: fromDate || undefined, to: toDate || undefined };
-  };
-
   const [selectedDateRange, setSelectedDateRange] = React.useState<DateRange | undefined>(() => getDefaultDateRange("Week"));
-
 
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
 
@@ -280,33 +279,34 @@ export default function CapacityInsightsPage() {
   }, []);
   
   useEffect(() => {
+    // Logic to update LOB filter options when BU changes
     const newLobsForBu = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
 
-    const lobsForCurrentBuAreDifferent = 
-        JSON.stringify(selectedLineOfBusiness.sort()) !== JSON.stringify([...newLobsForBu].sort()) ||
-        !selectedLineOfBusiness.every(lob => newLobsForBu.includes(lob as LineOfBusinessName<typeof selectedBusinessUnit>));
+    // Only update selectedLineOfBusiness if it's not already set to all LOBs for the new BU
+    // or if the current selection is invalid for the new BU.
+    const currentSelectionIsValidForNewBu = selectedLineOfBusiness.every(lob => newLobsForBu.includes(lob as any));
+    const currentSelectionIsAllLobsForNewBu = 
+        selectedLineOfBusiness.length === newLobsForBu.length &&
+        selectedLineOfBusiness.every(lob => newLobsForBu.includes(lob as any));
 
-    if (lobsForCurrentBuAreDifferent) {
+    if (!currentSelectionIsValidForNewBu || !currentSelectionIsAllLobsForNewBu) {
         setSelectedLineOfBusiness([...newLobsForBu]);
     }
-
+    
     setFilterOptions(prevFilterOptions => {
-        const currentLobsForFilter = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
-        const buOptionsUnchanged = JSON.stringify(prevFilterOptions.businessUnits.sort()) === JSON.stringify([...ALL_BUSINESS_UNITS].sort());
-        const lobsForFilterUnchanged = JSON.stringify(prevFilterOptions.linesOfBusiness.sort()) === JSON.stringify([...currentLobsForFilter].sort());
-        const teamsForFilterUnchanged = JSON.stringify(prevFilterOptions.teams.sort()) === JSON.stringify([...ALL_TEAM_NAMES].sort());
-
-        if (!buOptionsUnchanged || !lobsForFilterUnchanged || !teamsForFilterUnchanged) {
+        const updatedLobs = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
+        // Check if options actually changed to avoid re-render loops
+        if (JSON.stringify(prevFilterOptions.linesOfBusiness.sort()) !== JSON.stringify([...updatedLobs].sort())) {
             return {
-                businessUnits: [...ALL_BUSINESS_UNITS], 
-                linesOfBusiness: [...currentLobsForFilter],
-                teams: [...ALL_TEAM_NAMES],
+                ...prevFilterOptions,
+                linesOfBusiness: [...updatedLobs],
             };
         }
-        return prevFilterOptions;
+        return prevFilterOptions; // Return previous state if no change
     });
-  }, [selectedBusinessUnit, selectedLineOfBusiness]); 
-  
+  }, [selectedBusinessUnit, selectedLineOfBusiness]); // Removed filterOptions from dependencies
+
+
   
   const processDataForTable = useCallback(() => {
     const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
@@ -321,45 +321,43 @@ export default function CapacityInsightsPage() {
         const { startDate: periodStartDate, endDate: periodEndDate } = getHeaderDateRange(periodHeaderStr, selectedTimeInterval);
         if (!periodStartDate || !periodEndDate) return false;
         
-        // Check for intersection: (StartA <= EndB) and (EndA >= StartB)
         return periodStartDate <= userRangeEnd && periodEndDate >= userRangeStart;
       });
-    } else if (selectedDateRange?.from) { // Only "from" date is selected
+    } else if (selectedDateRange?.from) { 
       const userRangeStart = selectedDateRange.from;
        periodsToDisplay = sourcePeriods.filter(periodHeaderStr => {
         const { startDate: periodStartDate, endDate: periodEndDate } = getHeaderDateRange(periodHeaderStr, selectedTimeInterval);
         if (!periodStartDate || !periodEndDate) return false;
-        return periodEndDate >= userRangeStart; // Include if period ends on or after the selected start
+        return periodEndDate >= userRangeStart; 
       });
-      // Optionally limit to a certain number if only 'from' is picked, e.g., next N periods
-      // periodsToDisplay = periodsToDisplay.slice(0, NUM_PERIODS_DISPLAYED); 
+      if (periodsToDisplay.length > NUM_PERIODS_DISPLAYED) {
+        periodsToDisplay = periodsToDisplay.slice(0, NUM_PERIODS_DISPLAYED);
+      }
     } else {
-      // Default to a certain number of periods if no range selected
-      // This case should be less common with the new date picker defaulting a range
-      periodsToDisplay = sourcePeriods.slice(0, selectedTimeInterval === "Week" ? 12 : 3);
+      periodsToDisplay = sourcePeriods.slice(0, NUM_PERIODS_DISPLAYED);
     }
 
     setDisplayedPeriodHeaders(periodsToDisplay);
 
     const standardWorkMinutes = selectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
-    const relevantRawLobEntriesForSelectedBu = rawCapacityDataSource.filter(d => d.bu === selectedBusinessUnit);
     
     const newDisplayData: CapacityDataRow[] = [];
-    const buName = selectedBusinessUnit;
+    const buName = selectedBusinessUnit; // Only one BU selected at a time now
     
-    if (relevantRawLobEntriesForSelectedBu.length === 0 && selectedLineOfBusiness.length === 0) { 
+    const relevantRawLobEntriesForSelectedBu = rawCapacityDataSource.filter(d => d.bu === buName);
+
+    if (relevantRawLobEntriesForSelectedBu.length === 0) { 
         setDisplayableCapacityData([]);
         return;
     }
 
     const childrenLobsDataRows: CapacityDataRow[] = [];
-    const lobsForCurrentBu = BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness;
     
     // Filter LOBs based on multi-select OR show all if 'All LOBs for BU' effectively selected
+    const lobsForCurrentBu = BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness;
     const lobsToDisplay = selectedLineOfBusiness.length === lobsForCurrentBu.length && selectedLineOfBusiness.every(lob => lobsForCurrentBu.includes(lob as any))
-      ? lobsForCurrentBu // effectively "All" LOBs for this BU
+      ? lobsForCurrentBu 
       : selectedLineOfBusiness;
-
 
     lobsToDisplay.forEach(lobName => {
         const lobRawEntry = relevantRawLobEntriesForSelectedBu.find(entry => entry.lob === lobName);
@@ -394,19 +392,31 @@ export default function CapacityInsightsPage() {
         periodsToDisplay.forEach(period => {
             let reqHcSum = 0;
             let actHcSum = 0;
+            // let reqAgentMinutesSum = 0;
+            // let actAgentMinutesSum = 0;
 
             childrenTeamsDataRows.forEach(teamRow => {
                 const teamPeriodMetric = teamRow.periodicData[period] as TeamPeriodicMetrics;
                 if (teamPeriodMetric) {
                     reqHcSum += teamPeriodMetric.requiredHC ?? 0;
                     actHcSum += teamPeriodMetric.actualHC ?? 0;
+                    // reqAgentMinutesSum += teamPeriodMetric._calculatedRequiredAgentMinutes ?? 0;
+                    // actAgentMinutesSum += teamPeriodMetric._calculatedActualAgentMinutes ?? 0;
                 }
             });
+            
+            const overUnderHCSum = (actHcSum > 0 || reqHcSum > 0 || (actHcSum === 0 && reqHcSum === 0)) ? actHcSum - reqHcSum : null;
+            // const overUnderAgentMinutesSum = (actAgentMinutesSum > 0 || reqAgentMinutesSum > 0 || (actAgentMinutesSum === 0 && reqAgentMinutesSum === 0)) ? actAgentMinutesSum - reqAgentMinutesSum : null;
+            // const adherenceValue = (reqAgentMinutesSum > 0 && actAgentMinutesSum !== null) ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
             
             lobPeriodicData[period] = {
                 requiredHC: reqHcSum,
                 actualHC: actHcSum,
-                overUnderHC: (actHcSum > 0 || reqHcSum > 0 || (actHcSum === 0 && reqHcSum === 0)) ? actHcSum - reqHcSum : null,
+                overUnderHC: overUnderHCSum,
+                // required: reqAgentMinutesSum,
+                // actual: actAgentMinutesSum,
+                // overUnder: overUnderAgentMinutesSum,
+                // adherence: adherenceValue,
             };
         });
              
@@ -425,18 +435,31 @@ export default function CapacityInsightsPage() {
       periodsToDisplay.forEach(period => {
         let reqHcSum = 0;
         let actHcSum = 0;
+        // let reqAgentMinutesSum = 0;
+        // let actAgentMinutesSum = 0;
+
         childrenLobsDataRows.forEach(lobRow => {
             const lobPeriodMetric = lobRow.periodicData[period] as AggregatedPeriodicMetrics;
               if (lobPeriodMetric) {
                 reqHcSum += lobPeriodMetric.requiredHC ?? 0;
                 actHcSum += lobPeriodMetric.actualHC ?? 0;
+                // reqAgentMinutesSum += lobPeriodMetric.required ?? 0;
+                // actAgentMinutesSum += lobPeriodMetric.actual ?? 0;
               }
         });
         
+        const overUnderHCSum = (actHcSum > 0 || reqHcSum > 0 || (actHcSum === 0 && reqHcSum === 0)) ? actHcSum - reqHcSum : null;
+        // const overUnderAgentMinutesSum = (actAgentMinutesSum > 0 || reqAgentMinutesSum > 0 || (actAgentMinutesSum === 0 && reqAgentMinutesSum === 0)) ? actAgentMinutesSum - reqAgentMinutesSum : null;
+        // const adherenceValue = (reqAgentMinutesSum > 0 && actAgentMinutesSum !== null) ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
+
         buPeriodicData[period] = {
             requiredHC: reqHcSum,
             actualHC: actHcSum,
-            overUnderHC: (actHcSum > 0 || reqHcSum > 0 || (actHcSum === 0 && reqHcSum === 0)) ? actHcSum - reqHcSum : null,
+            overUnderHC: overUnderHCSum,
+            // required: reqAgentMinutesSum,
+            // actual: actAgentMinutesSum,
+            // overUnder: overUnderAgentMinutesSum,
+            // adherence: adherenceValue,
         };
       });
       
@@ -451,13 +474,23 @@ export default function CapacityInsightsPage() {
     }
     
     setDisplayableCapacityData(newDisplayData);
+  // }, [
+  //     selectedBusinessUnit, 
+  //     selectedLineOfBusiness, 
+  //     selectedTeams,
+  //     selectedTimeInterval, 
+  //     selectedDateRange,
+  //     rawCapacityDataSource,
+  //     expandedItems, // Added expandedItems as it's used in setExpandedItems
+  //   ]);
   }, [
       selectedBusinessUnit, 
       selectedLineOfBusiness, 
       selectedTeams,
       selectedTimeInterval, 
       selectedDateRange,
-      rawCapacityDataSource,
+      rawCapacityDataSource, 
+      // No longer directly depending on expandedItems to set new expansions
     ]);
 
 
@@ -471,7 +504,7 @@ export default function CapacityInsightsPage() {
   
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground">
+    <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
       <HeaderSection
         filterOptions={filterOptions}
         selectedBusinessUnit={selectedBusinessUnit}
@@ -499,3 +532,4 @@ export default function CapacityInsightsPage() {
     </div>
   );
 }
+
