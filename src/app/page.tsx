@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { HeaderSection } from "@/components/capacity-insights/header-section";
 import { CapacityTable } from "@/components/capacity-insights/capacity-table";
-import { mockRawCapacityData as initialMockRawCapacityData, mockFilterOptions } from "@/components/capacity-insights/data";
+import { mockRawCapacityData as initialMockRawCapacityData } from "@/components/capacity-insights/data";
 import { 
   ALL_WEEKS_HEADERS, 
   ALL_MONTH_HEADERS, 
@@ -24,15 +24,14 @@ import {
   LineOfBusinessName,
   ALL_TEAM_NAMES,
 } from "@/components/capacity-insights/types";
-import type { MetricDefinition } from "@/components/capacity-insights/types";
-import { getWeek, getMonth, getYear, parse as dateParse, format as formatDateFn, startOfWeek, endOfWeek, isWithinInterval as isWithinIntervalFns } from 'date-fns';
+import type { MetricDefinition, FilterOptions } from "@/components/capacity-insights/types";
+import { getWeek, getMonth, getYear, parse as dateParse, format as formatDateFn, startOfWeek, endOfWeek, isWithinInterval as isWithinIntervalFns, setDate } from 'date-fns';
 
 
-const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60; // 40 hours * 60 minutes
-const STANDARD_MONTHLY_WORK_MINUTES = (40 * 52 / 12) * 60; // Average minutes per month
+const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60; 
+const STANDARD_MONTHLY_WORK_MINUTES = (40 * 52 / 12) * 60; 
 
 
-// Helper to calculate team-specific metrics for a single period
 const calculateTeamMetricsForPeriod = (
   teamInputData: Partial<RawTeamDataEntry['periodicInputData'][string]>, 
   lobBaseRequiredAgentMinutes: number | null,
@@ -46,7 +45,7 @@ const calculateTeamMetricsForPeriod = (
     _calculatedActualAgentMinutes: null,
     requiredHC: null, 
     overUnderHC: null,
-    ...teamInputData, // Spread input data to override defaults
+    ...teamInputData, 
   };
 
   if (lobBaseRequiredAgentMinutes === null || lobBaseRequiredAgentMinutes === undefined) {
@@ -93,16 +92,22 @@ const parseDateFromHeaderString = (dateMMDD: string, year: string): Date | null 
   if (!dateMMDD || !year) return null;
   const [month, day] = dateMMDD.split('/').map(Number);
   if (isNaN(month) || isNaN(day) || isNaN(parseInt(year))) return null;
-  return new Date(parseInt(year), month - 1, day); // Month is 0-indexed
+  // Adjust for JavaScript's 0-indexed months
+  const parsedDate = new Date(parseInt(year), month - 1, day);
+  // Basic validation: if the parsed date's month/day doesn't match, it was invalid (e.g., 02/30)
+  if (parsedDate.getFullYear() !== parseInt(year) || parsedDate.getMonth() !== month - 1 || parsedDate.getDate() !== day) {
+    return null;
+  }
+  return parsedDate;
 };
+
 
 const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): number => {
   const now = new Date();
   if (interval === "Week") {
     const currentYear = getYear(now);
-    // Ensure week starts on Monday for ISO-like behavior, adjust if your week starts differently
-    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 }); 
-    
+    const currentWeekOfYear = getWeek(now, { weekStartsOn: 1 }); // ISO week
+
     for (let i = 0; i < headers.length; i++) {
         const header = headers[i];
         const yearMatch = header.match(/\((\d{4})\)/);
@@ -115,21 +120,20 @@ const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): num
             const [startDateStr, endDateStr] = dateRangeMatch.slice(1);
             
             const headerWeekStartDate = parseDateFromHeaderString(startDateStr, String(headerYear));
+            // For end date, we need to be careful with parsing if it spans across years or months.
+            // However, for weekly ranges within the same year, this should be fine.
             const headerWeekEndDate = parseDateFromHeaderString(endDateStr, String(headerYear));
             
             if(headerWeekStartDate && headerWeekEndDate) {
-                 // Set end date to the end of the day for accurate comparison
                 const adjustedHeaderWeekEndDate = endOfWeek(headerWeekEndDate, { weekStartsOn: 1 });
                 if (isWithinIntervalFns(now, { start: headerWeekStartDate, end: adjustedHeaderWeekEndDate })) {
                     return i;
                 }
             }
-
-        } else {
+        } else { // Fallback for "WkX:" format
             const weekNumMatch = header.match(/Wk(\d+):/);
             if (weekNumMatch) {
                 const headerWeekNum = parseInt(weekNumMatch[1]);
-                const currentWeekOfYear = getWeek(now, { weekStartsOn: 1 }); 
                  if (headerWeekNum === currentWeekOfYear && header.includes(`(${currentYear})`)) {
                     return i;
                 }
@@ -147,7 +151,7 @@ const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): num
 
 export default function CapacityInsightsPage() {
   const [rawCapacityDataSource, setRawCapacityDataSource] = useState<RawLoBCapacityEntry[]>(() => JSON.parse(JSON.stringify(initialMockRawCapacityData)));
-  const [filterOptions, setFilterOptions] = useState(() => {
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>(() => {
     const initialBu = ALL_BUSINESS_UNITS[0] as BusinessUnitName; 
     const initialLobsForBu = BUSINESS_UNIT_CONFIG[initialBu].lonsOfBusiness;
     return {
@@ -158,12 +162,12 @@ export default function CapacityInsightsPage() {
   });
   const [displayableCapacityData, setDisplayableCapacityData] = useState<CapacityDataRow[]>([]);
   
-  const [selectedBusinessUnit, setSelectedBusinessUnit] = useState<BusinessUnitName>(ALL_BUSINESS_UNITS[0]); 
-  const [selectedLineOfBusiness, setSelectedLineOfBusiness] = useState<string[]>(() => BUSINESS_UNIT_CONFIG[ALL_BUSINESS_UNITS[0]].lonsOfBusiness);
+  const [selectedBusinessUnit, setSelectedBusinessUnit] = useState<BusinessUnitName>("WFS"); 
+  const [selectedLineOfBusiness, setSelectedLineOfBusiness] = useState<string[]>(() => [...BUSINESS_UNIT_CONFIG["WFS"].lonsOfBusiness]);
   const [selectedTeams, setSelectedTeams] = useState<TeamName[]>([...ALL_TEAM_NAMES]);
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
   
-  const [currentPeriodIndex, setCurrentPeriodIndex] = useState<number>(0); // Start from Wk1
+  const [currentPeriodIndex, setCurrentPeriodIndex] = useState<number>(0);
   
   const [currentDateDisplay, setCurrentDateDisplay] = useState("");
   const [dynamicDateDisplay, setDynamicDateDisplay] = useState<string | null>(null);
@@ -291,9 +295,9 @@ export default function CapacityInsightsPage() {
       if (startDate && endDate) {
          setDynamicDateDisplay(`${formatDateFn(startDate, "dd/MM")} - ${formatDateFn(endDate, "dd/MM")}`);
       } else {
-        setDynamicDateDisplay(null); // Fallback
+        setDynamicDateDisplay(null); 
       }
-    } else if (firstVisibleHeader) { // Only one week visible
+    } else if (firstVisibleHeader) { 
        const firstDateFullMatch = firstVisibleHeader.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
        if (firstDateFullMatch) {
            const startDateStr = firstDateFullMatch[1];
@@ -317,14 +321,8 @@ export default function CapacityInsightsPage() {
   const handleBusinessUnitChange = useCallback((bu: BusinessUnitName) => {
     setSelectedBusinessUnit(bu);
     const newLobsForBu = BUSINESS_UNIT_CONFIG[bu].lonsOfBusiness;
-    setSelectedLineOfBusiness([...newLobsForBu]); 
-    setFilterOptions(prev => {
-        const currentLobsForFilter = [...newLobsForBu];
-        if (JSON.stringify(prev.linesOfBusiness) !== JSON.stringify(currentLobsForFilter)) {
-            return { ...prev, linesOfBusiness: currentLobsForFilter };
-        }
-        return prev;
-    });
+    setSelectedLineOfBusiness([...newLobsForBu]); // Select all LOBs for the new BU by default
+    // No need to update filterOptions.linesOfBusiness here, it's derived in the useEffect below
   }, []);
   
   const handleLOBChange = useCallback((lobs: string[]) => {
@@ -342,30 +340,28 @@ export default function CapacityInsightsPage() {
     setSelectedLineOfBusiness(prevSelectedLOBs => {
       const sortedPrev = [...prevSelectedLOBs].sort().join(',');
       const sortedNew = [...newLobsForBu].sort().join(',');
-      if (sortedPrev !== sortedNew) {
+      // Only update if the LOB list for the BU is actually different,
+      // or if the selected LOBs are not a subset of the new BU's LOBs (e.g. BU changed)
+      if (sortedPrev !== sortedNew || !prevSelectedLOBs.every(lob => newLobsForBu.includes(lob as LineOfBusinessName<typeof selectedBusinessUnit>)) ) {
         return [...newLobsForBu];
       }
       return prevSelectedLOBs;
     });
 
     setFilterOptions(prevFilterOptions => {
-      const sortedPrevLOBs = [...prevFilterOptions.linesOfBusiness].sort().join(',');
-      const sortedNewLOBs = [...newLobsForBu].sort().join(',');
-      const sortedPrevBUs = [...prevFilterOptions.businessUnits].sort().join(',');
-      const sortedAllBUs = [...ALL_BUSINESS_UNITS].sort().join(',');
-      const sortedPrevTeams = [...prevFilterOptions.teams].sort().join(',');
-      const sortedAllTeams = [...ALL_TEAM_NAMES].sort().join(',');
+        const lobsForCurrentBu = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
+        const buOptionsUnchanged = JSON.stringify(prevFilterOptions.businessUnits.sort()) === JSON.stringify([...ALL_BUSINESS_UNITS].sort());
+        const lobsForFilterUnchanged = JSON.stringify(prevFilterOptions.linesOfBusiness.sort()) === JSON.stringify([...lobsForCurrentBu].sort());
+        const teamsForFilterUnchanged = JSON.stringify(prevFilterOptions.teams.sort()) === JSON.stringify([...ALL_TEAM_NAMES].sort());
 
-
-      if (sortedPrevLOBs !== sortedNewLOBs || sortedPrevBUs !== sortedAllBUs || sortedPrevTeams !== sortedAllTeams) {
-        return {
-          ...prevFilterOptions,
-          businessUnits: [...ALL_BUSINESS_UNITS], 
-          linesOfBusiness: [...newLobsForBu],
-          teams: [...ALL_TEAM_NAMES],
-        };
-      }
-      return prevFilterOptions;
+        if (!buOptionsUnchanged || !lobsForFilterUnchanged || !teamsForFilterUnchanged) {
+            return {
+                businessUnits: [...ALL_BUSINESS_UNITS], 
+                linesOfBusiness: [...lobsForCurrentBu],
+                teams: [...ALL_TEAM_NAMES],
+            };
+        }
+        return prevFilterOptions;
     });
   }, [selectedBusinessUnit]); 
   
@@ -376,19 +372,13 @@ export default function CapacityInsightsPage() {
     setDisplayedPeriodHeaders(periodsToDisplay);
     const standardWorkMinutes = selectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
 
-    let relevantRawLobEntries = rawCapacityDataSource.filter(d => d.bu === selectedBusinessUnit);
+    const relevantRawLobEntriesForSelectedBu = rawCapacityDataSource.filter(d => d.bu === selectedBusinessUnit);
     
-    const allLobsForSelectedBu = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
-    if (selectedLineOfBusiness.length !== allLobsForSelectedBu.length || !allLobsForSelectedBu.every(lob => selectedLineOfBusiness.includes(lob))) {
-        relevantRawLobEntries = relevantRawLobEntries.filter(d => selectedLineOfBusiness.includes(d.lob));
-    }
-
     const newDisplayData: CapacityDataRow[] = [];
     
     const buName = selectedBusinessUnit;
-    const buRawLobEntries = relevantRawLobEntries; 
-
-    if (buRawLobEntries.length === 0 && selectedLineOfBusiness.length === 0) { 
+    
+    if (relevantRawLobEntriesForSelectedBu.length === 0 && selectedLineOfBusiness.length === 0) { 
         setDisplayableCapacityData([]);
         return;
     }
@@ -399,7 +389,7 @@ export default function CapacityInsightsPage() {
             return; 
         }
 
-        const lobRawEntry = buRawLobEntries.find(entry => entry.lob === lobName);
+        const lobRawEntry = relevantRawLobEntriesForSelectedBu.find(entry => entry.lob === lobName);
         if (!lobRawEntry) return;
           
         const childrenTeamsDataRows: CapacityDataRow[] = [];
@@ -441,15 +431,14 @@ export default function CapacityInsightsPage() {
                     actHcSum += teamPeriodMetric.actualHC ?? 0;
                 }
             });
-            const adherence = reqAgentMinutesSum > 0 && actAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
+            
             lobPeriodicData[period] = {
                 required: reqAgentMinutesSum, 
                 actual: actAgentMinutesSum,   
                 overUnder: actAgentMinutesSum - reqAgentMinutesSum,
-                adherence: adherence,
                 requiredHC: reqHcSum,
                 actualHC: actHcSum,
-                overUnderHC: actHcSum > 0 && reqHcSum > 0 ? actHcSum - reqHcSum : null,
+                overUnderHC: (actHcSum > 0 || reqHcSum > 0) ? actHcSum - reqHcSum : null,
             };
         });
              
@@ -479,15 +468,14 @@ export default function CapacityInsightsPage() {
                 actHcSum += lobPeriodMetric.actualHC ?? 0;
               }
         });
-        const adherence = reqAgentMinutesSum > 0 && actAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
+        
         buPeriodicData[period] = {
             required: reqAgentMinutesSum,
             actual: actAgentMinutesSum,
             overUnder: actAgentMinutesSum - reqAgentMinutesSum,
-            adherence: adherence,
             requiredHC: reqHcSum,
             actualHC: actHcSum,
-            overUnderHC: actHcSum > 0 && reqHcSum > 0 ? actHcSum - reqHcSum : null,
+            overUnderHC: (actHcSum > 0 || reqHcSum > 0) ? actHcSum - reqHcSum : null,
         };
       });
       
@@ -606,7 +594,3 @@ export default function CapacityInsightsPage() {
     </div>
   );
 }
-
-    
-
-    
