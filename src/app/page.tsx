@@ -73,7 +73,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { Loader2, Zap, Download, Upload, Building2, Briefcase, Users, ChevronDown, Edit3, ArrowDown, ArrowUp, Minus, Calendar as CalendarIcon } from "lucide-react";
+import { Loader2, Zap, Download, Building2, Briefcase, ChevronDown, Edit3, ArrowDown, ArrowUp, Minus, Calendar as CalendarIcon } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -426,6 +426,7 @@ const getHeaderDateRange = (header: string, interval: TimeInterval): { startDate
 
 const getDefaultDateRange = (interval: TimeInterval): DateRange => {
   const headers = interval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
+  // Default to 12 weeks or 3 months
   const numPeriods = interval === "Week" ? Math.min(11, headers.length -1) : Math.min(2, headers.length-1); 
 
   const fromDate = getHeaderDateRange(headers[0], interval).startDate;
@@ -1073,20 +1074,22 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
     );
 
     if (isExpanded) {
-        if (item.itemType === 'BU' || item.itemType === 'LOB') {
-            const aggregatedMetricRows = renderCapacityItemContent(item);
-            rows.push(...aggregatedMetricRows);
-            if (item.children && item.children.length > 0) {
-                item.children.forEach(child => {
-                    rows.push(...renderTableItem(child));
-                });
-            }
-        }
-        else if (item.itemType === 'Team') { 
+        if (item.itemType === 'Team') { 
             const teamMetricRows = renderCapacityItemContent(item);
             rows.push(...teamMetricRows);
+        } else if (item.children && item.children.length > 0) { // BU or LOB with children
+            const aggregatedMetricRows = renderCapacityItemContent(item);
+            rows.push(...aggregatedMetricRows);
+            item.children.forEach(child => {
+                rows.push(...renderTableItem(child));
+            });
+        } else { // BU or LOB without children (should not happen with current logic but defensive)
+            const aggregatedMetricRows = renderCapacityItemContent(item);
+            rows.push(...aggregatedMetricRows);
         }
     } 
+    // This case is for LOBs without children, if they were not expandable by default.
+    // Or for BUs if they had direct metrics and no LOB children selected.
     else if (!isExpandable && (item.itemType === 'BU' || item.itemType === 'LOB')) { 
         const itemMetricRows = renderCapacityItemContent(item);
         rows.push(...itemMetricRows);
@@ -1102,9 +1105,9 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div ref={scrollContainerRef} className="overflow-x-auto relative border border-border rounded-md shadow-md">
+      <div ref={scrollContainerRef} className="overflow-x-auto relative">
         <Table className="min-w-full">
-          <TableHeader className="sticky top-0 z-40 bg-card">
+          <TableHeader className="bg-card">
             <TableRow>
               <TableHead className="sticky left-0 z-50 bg-card min-w-[320px] whitespace-nowrap px-4 py-2 align-middle">
                 {getCategoryHeader()}
@@ -1357,6 +1360,7 @@ export default function CapacityInsightsPage() {
                (isBefore(periodStartDate, userRangeEnd) && isAfter(periodEndDate, userRangeStart));
       });
     } else {
+      // Fallback if no date range is selected (should ideally not happen with default)
       periodsToDisplay = sourcePeriods.slice(0, NUM_PERIODS_DISPLAYED);
     }
     
@@ -1510,5 +1514,4 @@ export default function CapacityInsightsPage() {
     </div>
   );
 }
-
 
