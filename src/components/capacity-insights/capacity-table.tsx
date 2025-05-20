@@ -17,7 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowDown, ArrowUp, Minus, ChevronDown, Edit3 } from "lucide-react";
+import { ArrowDown, ArrowUp, Minus, ChevronDown, Edit3, Users } from "lucide-react"; // Added Users icon
 import type { 
     CapacityDataRow, 
     TeamPeriodicMetrics, 
@@ -82,7 +82,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
                  onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, ""); 
             } else if (!isNaN(val)) {
                  onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, String(val));
-            } else if (e.target.value === "" && rawValue !== null) { // Handle clearing the input
+            } else if (e.target.value === "" && rawValue !== null) { 
                  onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, "");
             }
         }}
@@ -108,8 +108,8 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
     displayValue = `${numValue.toFixed(1)}%`;
   } else if (metricDef.isTime) { 
     displayValue = `${numValue.toFixed(1)} min`;
-  } else if (metricDef.isHC) {
-    displayValue = numValue.toFixed(2);
+  } else if (metricDef.isHC || metricDef.key === 'moveIn' || metricDef.key === 'moveOut' || metricDef.key === 'newHireBatch' || metricDef.key === 'newHireProduction') {
+    displayValue = numValue.toFixed(metricDef.key === 'moveIn' || metricDef.key === 'moveOut' || metricDef.key === 'newHireBatch' || metricDef.key === 'newHireProduction' ? 0 : 2);
   } else if (typeof numValue === 'number' && !isNaN(numValue)) {
     const fractionDigits = (metricDef.key === "overUnder" || metricDef.key === "required" || metricDef.key === "actual") ? 0 : 1;
     displayValue = numValue.toLocaleString(undefined, {minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits});
@@ -171,11 +171,13 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
   return (
     <TableRow className="hover:bg-card-foreground/5">
       <TableCell
-        className="sticky left-0 z-20 bg-card font-normal text-foreground whitespace-nowrap py-2 px-4"
-        style={{ paddingLeft: `${level * 1.5 + 1}rem` }}
+        className="sticky left-0 z-20 bg-card font-normal text-foreground whitespace-nowrap py-2"
+        style={{ paddingLeft: `${level * 1.5 + 0.5}rem`, paddingRight: '1rem' }}
       >
-        {metricDef.label}
-        {item.itemType === 'Team' && metricDef.isEditableForTeam && <Edit3 className="h-3 w-3 inline-block ml-2 text-muted-foreground opacity-50" />}
+        <span>
+          {metricDef.label}
+          {item.itemType === 'Team' && metricDef.isEditableForTeam && <Edit3 className="h-3 w-3 inline-block ml-2 text-muted-foreground opacity-50" />}
+        </span>
       </TableCell>
       {periodHeaders.map((periodHeader) => {
         const metricForPeriod = item.periodicData[periodHeader];
@@ -300,58 +302,63 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
       observer.disconnect();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodHeaders, onVisiblePeriodsChange]); // scrollContainerRef.current is stable
+  }, [periodHeaders, onVisiblePeriodsChange]); 
 
 
   const renderTableItem = (item: CapacityDataRow): React.ReactNode[] => {
     const rows: React.ReactNode[] = [];
     const isExpanded = expandedItems[item.id] || false;
 
+    // Determine if the item is expandable: BUs/LOBs with children, or any Team item
+    const isExpandable = (item.itemType !== 'Team' && item.children && item.children.length > 0) || item.itemType === 'Team';
+
     rows.push(
       <TableRow 
         key={`${item.id}-name`} 
-        className={`${(item.children && item.children.length > 0) ? 'bg-card-foreground/5 hover:bg-card-foreground/10' : 'hover:bg-card-foreground/5'} `}
+        className={`${isExpandable ? 'bg-card-foreground/5 hover:bg-card-foreground/10' : 'hover:bg-card-foreground/5'} `}
       >
-        {(item.children && item.children.length > 0) ? (
-          <TableCell 
-            colSpan={1} 
-            className="p-0 sticky left-0 z-30 bg-card whitespace-nowrap"
+        <TableCell 
+          colSpan={1} 
+          className="p-0 sticky left-0 z-30 bg-card whitespace-nowrap"
+        >
+          <button
+            onClick={isExpandable ? () => toggleExpand(item.id) : undefined}
+            disabled={!isExpandable}
+            className="py-3 px-4 font-semibold text-foreground hover:no-underline w-full text-left flex items-center gap-2"
+            style={{ paddingLeft: `${item.level * 1.5 + (isExpandable ? 0.5 : 1)}rem` }} // Adjust padding based on expandability
+            aria-expanded={isExpandable ? isExpanded : undefined}
           >
-            <button
-              onClick={() => toggleExpand(item.id)}
-              className="py-3 px-4 font-semibold text-foreground hover:no-underline w-full text-left flex items-center gap-2"
-              style={{ paddingLeft: `${item.level * 1.5 + 1}rem` }}
-              aria-expanded={isExpanded}
-            >
+            {isExpandable && (
               <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
-              {item.name}
-            </button>
-          </TableCell>
-        ) : (
-          <TableCell 
-            className="sticky left-0 z-30 bg-card font-semibold text-foreground whitespace-nowrap py-3 px-4"
-            style={{ paddingLeft: `${item.level * 1.5 + 1}rem` }}
-          >
+            )}
+            {!isExpandable && <span className="w-4 shrink-0"></span>} {/* Placeholder for alignment if not expandable */}
             {item.name}
-          </TableCell>
-        )}
+          </button>
+        </TableCell>
         {periodHeaders.map((ph, index) => {
-           if (item.children && item.children.length > 0 && index === 0) { 
+           if (isExpandable && index === 0) { 
              return null; 
            }
              return (
-                <TableCell key={`${item.id}-${ph}-headerplaceholder`} className={`${ (item.children && item.children.length > 0) ? 'py-3' : ''}`}></TableCell>
+                <TableCell key={`${item.id}-${ph}-headerplaceholder`} className={`${ isExpandable ? 'py-3' : ''}`}></TableCell>
              );
         })}
       </TableRow>
     );
 
-    if (isExpanded || !item.children || item.children.length === 0) {
+    // If the item is a Team and it's expanded, render its metrics
+    if (item.itemType === 'Team' && isExpanded) {
+        const itemMetricRows = renderCapacityItemContent(item, periodHeaders, teamMetricDefinitions, aggregatedMetricDefinitions, onTeamMetricChange);
+        rows.push(...itemMetricRows);
+    } 
+    // If the item is NOT a Team and it's expanded (or has no children to expand), render its metrics
+    else if (item.itemType !== 'Team' && (isExpanded || !item.children || item.children.length === 0)) {
         const itemMetricRows = renderCapacityItemContent(item, periodHeaders, teamMetricDefinitions, aggregatedMetricDefinitions, onTeamMetricChange);
         rows.push(...itemMetricRows);
     }
 
-    if (item.children && item.children.length > 0 && isExpanded) {
+    // If the item has children (BUs/LOBs) and is expanded, render its children recursively
+    if (item.itemType !== 'Team' && item.children && item.children.length > 0 && isExpanded) {
       item.children.forEach(child => {
         rows.push(...renderTableItem(child)); 
       });
@@ -362,10 +369,8 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 
   const getCategoryHeader = () => {
     if (data.length === 0) return 'Category / Metric';
-    const firstItemType = data[0]?.itemType;
-    if (firstItemType === 'BU') return 'BU / LoB / Team / Metric';
-    if (firstItemType === 'LOB') return 'LoB / Team / Metric'; // Should not happen with current logic where BU is always top
-    return 'Category / Metric';
+    // This can be simplified as BU will always be top level now
+    return 'BU / LoB / Team / Metric';
   };
 
 
@@ -405,7 +410,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
     </TooltipProvider>
   );
 }
-CapacityTableComponent.displayName = 'CapacityTable';
+CapacityTableComponent.displayName = 'CapacityTableComponent';
 export const CapacityTable = React.memo(CapacityTableComponent);
 
     
