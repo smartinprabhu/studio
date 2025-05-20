@@ -13,84 +13,157 @@ import {
   BusinessUnitName,
   LineOfBusinessName,
   RawLoBCapacityEntry,
-  // MetricValues, // No longer directly used here as CalculatedMetricValues covers it
-  CalculatedMetricValues,
+  AggregatedPeriodicMetrics,
+  TeamPeriodicMetrics,
   NUM_PERIODS_DISPLAYED,
   DYNAMIC_SUM_COLUMN_KEY,
   BUSINESS_UNIT_CONFIG,
   ALL_BUSINESS_UNITS, 
   GroupByOption,
   TeamName,
-  AggregatedPeriodicMetrics, // For BU/LOB summaries
-  TeamPeriodicMetrics, // For Team details
-  ALL_TEAM_NAMES,
-  TEAM_METRIC_ROW_DEFINITIONS,
-  AGGREGATED_METRIC_ROW_DEFINITIONS,
+  RawTeamDataEntry,
+  TEAM_METRIC_ROW_DEFINITIONS, // Will be used by table component later
+  AGGREGATED_METRIC_ROW_DEFINITIONS, // Will be used by table component later
 } from "@/components/capacity-insights/types";
-// Removed unused date-fns imports for now, will add back if specific date logic is re-implemented
-// import { parse, differenceInCalendarWeeks, startOfWeek, endOfWeek, format, addWeeks, getMonth, getYear, startOfMonth, endOfMonth, addMonths } from 'date-fns';
+
+const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60; // 40 hours * 60 minutes
+const STANDARD_MONTHLY_WORK_MINUTES = (40 * 52 / 12) * 60; // Average minutes per month
 
 
-// Helper to calculate derived metrics for LOB/BU (agent-minutes based)
-const calculateSummaryMetrics = (required: number | null, actual: number | null): CalculatedMetricValues => {
-  if (required === null || actual === null || required === undefined || actual === undefined) {
-    return { required: null, actual: null, overUnder: null, adherence: null };
+// Helper to calculate team-specific metrics for a single period
+const calculateTeamMetricsForPeriod = (
+  teamInputData: ReturnType<() => RawTeamDataEntry['periodicInputData'][string]>, // Omit<TeamPeriodicMetrics, 'requiredHC' | 'overUnderHC' | '_calculatedRequiredAgentMinutes' | '_calculatedActualAgentMinutes'>
+  lobBaseRequiredAgentMinutes: number | null,
+  standardWorkMinutesForPeriod: number
+): TeamPeriodicMetrics => {
+  const defaults: TeamPeriodicMetrics = {
+    aht: null, shrinkagePercentage: null, occupancyPercentage: null, backlogPercentage: null,
+    attritionPercentage: null, volumeMixPercentage: null, actualHC: null, moveIn: null, moveOut: null,
+    newHireBatch: null, newHireProduction: null, _productivity: null,
+    _calculatedRequiredAgentMinutes: null, _calculatedActualAgentMinutes: null,
+    requiredHC: null, overUnderHC: null,
+    // BaseAgentMinuteValues - these are specific to LOB/BU summaries, not directly on TeamPeriodicMetrics like this
+    // but we need a placeholder for _calculatedActualAgentMinutes for the sum.
+    required: null, actual: null, overUnder: null, adherence: null, 
+  };
+
+  if (!teamInputData || lobBaseRequiredAgentMinutes === null) {
+    return defaults;
   }
-  const overUnder = actual - required;
-  const adherence = required !== 0 ? (actual / required) * 100 : null;
-  return { required, actual, overUnder, adherence };
-};
 
-// Helper to sum metric values (CalculatedMetricValues), handling nulls
-const sumSummaryMetrics = (m1: CalculatedMetricValues, m2: CalculatedMetricValues): CalculatedMetricValues => {
-  const древний_required = (m1.required ?? 0) + (m2.required ?? 0);
-  const древний_actual = (m1.actual ?? 0) + (m2.actual ?? 0);
-  // Recalculate for the sum
-  return calculateSummaryMetrics(древний_required, древний_actual);
-};
-
-// Aggregates data for LOBs/BUs. Input `lobEntries` are RawLoBCapacityEntry[]
-const aggregatePeriodicDataForLobOrBu = (
-  lobEntries: RawLoBCapacityEntry[], 
-  periodsToDisplay: string[]
-): Record<string, CalculatedMetricValues> => {
-  const aggregated: Record<string, CalculatedMetricValues> = {};
+  const calculatedRequiredAgentMinutes = lobBaseRequiredAgentMinutes * ((teamInputData.volumeMixPercentage ?? 0) / 100);
   
-  periodsToDisplay.forEach(period => {
-    let periodRequiredSum: number | null = 0;
-    let periodActualSum: number | null = 0; 
-    let hasDataForPeriod = false;
-
-    lobEntries.forEach(lobEntry => {
-      const requiredForLob = lobEntry.lobTotalBaseRequiredMinutes[period];
-      if (requiredForLob !== null && requiredForLob !== undefined) {
-        periodRequiredSum = (periodRequiredSum ?? 0) + requiredForLob;
-        hasDataForPeriod = true;
-
-        // MOCK ACTUAL FOR LOB AGGREGATION: Placeholder based on its own required.
-        // This should eventually be a sum of its teams' actual agent minutes.
-        const actualForLob = requiredForLob * (0.9 + Math.random() * 0.2); // 90% to 110% of required
-        periodActualSum = (periodActualSum ?? 0) + actualForLob;
-      }
-    });
-
-     if (hasDataForPeriod && periodRequiredSum !== null && periodActualSum !== null) {
-       aggregated[period] = calculateSummaryMetrics(periodRequiredSum, periodActualSum);
-     } else {
-       aggregated[period] = calculateSummaryMetrics(null,null);
-     }
-  });
-
-  // Calculate sum over the displayed periods
-  let totalSumMetrics = calculateSummaryMetrics(0,0);
-  periodsToDisplay.forEach(period => {
-    if (aggregated[period] && aggregated[period].required !== null) {
-      totalSumMetrics = sumSummaryMetrics(totalSumMetrics, aggregated[period]);
+  let requiredHC = null;
+  if (calculatedRequiredAgentMinutes > 0 && standardWorkMinutesForPeriod > 0 && teamInputData.shrinkagePercentage !== null && teamInputData.occupancyPercentage !== null) {
+    const effectiveMinutesPerHC = standardWorkMinutesForPeriod * 
+                                 (1 - (teamInputData.shrinkagePercentage / 100)) * 
+                                 (teamInputData.occupancyPercentage / 100);
+    if (effectiveMinutesPerHC > 0) {
+      requiredHC = calculatedRequiredAgentMinutes / effectiveMinutesPerHC;
     }
-  });
-  aggregated[DYNAMIC_SUM_COLUMN_KEY] = totalSumMetrics;
+  }
+
+  const actualHC = teamInputData.actualHC ?? null;
+  const overUnderHC = (actualHC !== null && requiredHC !== null) ? actualHC - requiredHC : null;
+
+  let calculatedActualAgentMinutes = null;
+  if (calculatedRequiredAgentMinutes !== null && requiredHC !== null && requiredHC > 0 && actualHC !== null) {
+    calculatedActualAgentMinutes = calculatedRequiredAgentMinutes * (actualHC / requiredHC);
+  } else if (requiredHC === 0 && actualHC !== null && actualHC > 0) { // If no required, but actual HC exists, implies overstaffing for 0 demand
+     calculatedActualAgentMinutes = 0; // Or could be some nominal minutes based on actualHC if needed
+  }
+
+
+  return {
+    ...teamInputData,
+    _calculatedRequiredAgentMinutes: calculatedRequiredAgentMinutes,
+    _calculatedActualAgentMinutes: calculatedActualAgentMinutes,
+    requiredHC: requiredHC,
+    actualHC: actualHC,
+    overUnderHC: overUnderHC,
+    // Fields from BaseAgentMinuteValues are not directly part of TeamPeriodicMetrics for individual period display
+    // but their underlying calculated minutes are used for aggregation.
+    // For a Team row summary, these might be calculated (e.g. team's own adherence)
+    required: null, // Not directly used by team rows in this way
+    actual: null, // Not directly used by team rows in this way
+    overUnder: null, // Not directly used by team rows in this way
+    adherence: null, // Not directly used by team rows in this way
+  };
+};
+
+
+// Helper to sum AggregatedPeriodicMetrics or TeamPeriodicMetrics, handling nulls
+// Used for calculating the DYNAMIC_SUM_COLUMN_KEY
+const aggregateAndSummarizeMetrics = (
+  m1: AggregatedPeriodicMetrics | TeamPeriodicMetrics, 
+  m2: AggregatedPeriodicMetrics | TeamPeriodicMetrics
+): AggregatedPeriodicMetrics | TeamPeriodicMetrics => {
   
-  return aggregated;
+  const result = { ...m1 }; // Start with m1 as base, potentially add all unique keys from m2 later if needed
+
+  // Sum agent-minute related fields (present in AggregatedPeriodicMetrics)
+  result.required = (m1.required ?? 0) + (m2.required ?? 0);
+  result.actual = (m1.actual ?? 0) + (m2.actual ?? 0);
+  if (result.required !== null && result.required !== 0 && result.actual !== null) {
+    result.overUnder = result.actual - result.required;
+    result.adherence = (result.actual / result.required) * 100;
+  } else {
+    result.overUnder = (result.actual ?? 0) - (result.required ?? 0);
+    result.adherence = null;
+  }
+
+  // Sum HC related fields (present in AggregatedPeriodicMetrics and TeamPeriodicMetrics)
+  result.requiredHC = (m1.requiredHC ?? 0) + (m2.requiredHC ?? 0);
+  result.actualHC = (m1.actualHC ?? 0) + (m2.actualHC ?? 0);
+  if (result.requiredHC !== null && result.actualHC !== null) {
+    result.overUnderHC = result.actualHC - result.requiredHC;
+  } else {
+    result.overUnderHC = null;
+  }
+  
+  // Sum team-specific raw inputs for summary (if they are part of the structure, e.g. for a team's own sum row)
+  // These are not typically summed for LOB/BU summaries, but for a team's summary column
+  if ('aht' in m1 && 'aht' in m2) { // Check if these are TeamPeriodicMetrics
+      // For team summary: AHT, Shrinkage, Occupancy, etc. are often weighted averages or taken from the latest period, not direct sums.
+      // For simplicity in this generic summer, we'll take the value from m2 (the one being added).
+      // A more sophisticated summary would handle these appropriately (e.g. weighted average for AHT).
+      result.aht = m2.aht;
+      result.shrinkagePercentage = m2.shrinkagePercentage;
+      result.occupancyPercentage = m2.occupancyPercentage;
+      result.backlogPercentage = m2.backlogPercentage;
+      result.attritionPercentage = m2.attritionPercentage;
+      result.volumeMixPercentage = (m1.volumeMixPercentage ?? 0) + (m2.volumeMixPercentage ?? 0); // Volume mix can be summed if it's about total contribution
+      
+      result.moveIn = (m1.moveIn ?? 0) + (m2.moveIn ?? 0);
+      result.moveOut = (m1.moveOut ?? 0) + (m2.moveOut ?? 0);
+      result.newHireBatch = (m1.newHireBatch ?? 0) + (m2.newHireBatch ?? 0);
+      result.newHireProduction = (m1.newHireProduction ?? 0) + (m2.newHireProduction ?? 0);
+      result._productivity = m2._productivity; // Take latest for productivity like metrics
+  }
+
+  // Sum underlying calculated agent minutes for consistency in totals, if present
+  if ('_calculatedRequiredAgentMinutes' in result && '_calculatedRequiredAgentMinutes' in m2) {
+    result._calculatedRequiredAgentMinutes = (m1._calculatedRequiredAgentMinutes ?? 0) + (m2._calculatedRequiredAgentMinutes ?? 0);
+  }
+  if ('_calculatedActualAgentMinutes' in result && '_calculatedActualAgentMinutes' in m2) {
+    result._calculatedActualAgentMinutes = (m1._calculatedActualAgentMinutes ?? 0) + (m2._calculatedActualAgentMinutes ?? 0);
+  }
+
+  return result;
+};
+
+const initialAggregatedMetrics: AggregatedPeriodicMetrics = {
+  required: 0, actual: 0, overUnder: 0, adherence: 0,
+  requiredHC: 0, actualHC: 0, overUnderHC: 0,
+};
+
+const initialTeamPeriodMetricsForSum: TeamPeriodicMetrics = {
+  aht: null, shrinkagePercentage: null, occupancyPercentage: null, backlogPercentage: null,
+  attritionPercentage: null, volumeMixPercentage: 0, actualHC: 0, moveIn: 0, moveOut: 0,
+  newHireBatch: 0, newHireProduction: 0, _productivity: null,
+  _calculatedRequiredAgentMinutes: 0, _calculatedActualAgentMinutes: 0,
+  requiredHC: 0, overUnderHC: 0,
+  required: 0, actual: 0, overUnder: 0, adherence: null, 
 };
 
 
@@ -127,103 +200,235 @@ export default function CapacityInsightsPage() {
     const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
     const periodsToDisplay = sourcePeriods.slice(currentPeriodIndex, currentPeriodIndex + NUM_PERIODS_DISPLAYED);
     setDisplayedPeriodHeaders(periodsToDisplay);
+    const standardWorkMinutes = selectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
 
-    let filteredRawData = mockRawCapacityData;
+    let relevantRawLobEntries = mockRawCapacityData;
     if (selectedBusinessUnit !== "All") {
-      filteredRawData = filteredRawData.filter(d => d.bu === selectedBusinessUnit);
+      relevantRawLobEntries = relevantRawLobEntries.filter(d => d.bu === selectedBusinessUnit);
     }
     if (selectedLineOfBusiness !== "All") {
-      // This LOB filtering needs to be aware of the hierarchy. 
-      // If BU is selected, this filters LOBs within that BU.
-      // If BU is "All", this filters LOBs across all BUs.
-      filteredRawData = filteredRawData.filter(d => d.lob === selectedLineOfBusiness);
+      relevantRawLobEntries = relevantRawLobEntries.filter(d => d.lob === selectedLineOfBusiness);
     }
 
     const newDisplayData: CapacityDataRow[] = [];
     const newExpandedItems: Record<string, boolean> = {};
 
     if (selectedGroupBy === "Business Unit") {
-      const busToDisplay = selectedBusinessUnit === "All" 
-        ? ALL_BUSINESS_UNITS 
-        : [selectedBusinessUnit];
+      const busToProcess = selectedBusinessUnit === "All" ? ALL_BUSINESS_UNITS : [selectedBusinessUnit];
 
-      busToDisplay.forEach(buName => {
-        const buLobsConfig = BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness;
-        // Get all RawLoBCapacityEntry for the current BU
-        const buRawEntries = mockRawCapacityData.filter(d => d.bu === buName); 
-        
-        if (buRawEntries.length === 0 && selectedBusinessUnit !== "All") return;
+      busToProcess.forEach(buName => {
+        const buRawLobEntries = relevantRawLobEntries.filter(entry => entry.bu === buName);
+        if (buRawLobEntries.length === 0) return;
 
-        const childrenLobs: CapacityDataRow[] = [];
-        buLobsConfig.forEach(lobName => {
-          // Filter LOB entries for the current LOB within the current BU's entries
-          const lobRawEntriesForCurrentLob = buRawEntries.filter(d => d.lob === lobName);
+        const childrenLobsDataRows: CapacityDataRow[] = [];
+        BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness.forEach(lobName => {
+          const lobRawEntry = buRawLobEntries.find(entry => entry.lob === lobName);
+          if (!lobRawEntry) return;
           
-          // Apply LOB filter: only include if "All" LOBs selected OR current LOB matches selectedLOB
+          // Apply LOB filter again if a specific LOB was selected at the top
           if (selectedLineOfBusiness !== "All" && selectedLineOfBusiness !== lobName) {
-            return; 
+            return;
           }
-          
-          if (lobRawEntriesForCurrentLob.length > 0) {
-            // TODO: Implement Team Level Data Processing here
-            // For now, LOB children will be empty, or we skip team display until ready.
-            // const childrenTeams: CapacityDataRow[] = []; 
-            // lobRawEntriesForCurrentLob[0].teams.forEach(team => {/* process team */})
 
-            childrenLobs.push({
-              id: `${buName}_${lobName.replace(/\s+/g, '-')}`,
-              name: lobName,
-              level: 1,
-              itemType: 'LOB',
-              periodicData: aggregatePeriodicDataForLobOrBu(lobRawEntriesForCurrentLob, periodsToDisplay), // Aggregates for this single LOB
-              // children: childrenTeams, // Will be added later
+          const childrenTeamsDataRows: CapacityDataRow[] = [];
+          (lobRawEntry.teams || []).forEach(teamRawEntry => {
+            const periodicTeamMetrics: Record<string, TeamPeriodicMetrics> = {};
+            periodsToDisplay.forEach(period => {
+              periodicTeamMetrics[period] = calculateTeamMetricsForPeriod(
+                teamRawEntry.periodicInputData[period],
+                lobRawEntry.lobTotalBaseRequiredMinutes[period],
+                standardWorkMinutes
+              );
             });
+            // Calculate Team Summary Column
+            let teamSummaryMetrics = {...initialTeamPeriodMetricsForSum};
+             periodsToDisplay.forEach(period => {
+                teamSummaryMetrics = aggregateAndSummarizeMetrics(teamSummaryMetrics, periodicTeamMetrics[period]) as TeamPeriodicMetrics;
+             });
+            periodicTeamMetrics[DYNAMIC_SUM_COLUMN_KEY] = teamSummaryMetrics;
+            
+            childrenTeamsDataRows.push({
+              id: `${lobRawEntry.id}_${teamRawEntry.teamName.replace(/\s+/g, '-')}`,
+              name: teamRawEntry.teamName,
+              level: 2, // BU -> LOB -> Team
+              itemType: 'Team',
+              periodicData: periodicTeamMetrics,
+            });
+          }); // End of teams for LOB
+
+          if (childrenTeamsDataRows.length > 0 || (selectedLineOfBusiness === "All" || selectedLineOfBusiness === lobName)) {
+             const lobPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
+             periodsToDisplay.forEach(period => {
+                let reqAgentMinutesSum = 0;
+                let actAgentMinutesSum = 0;
+                let reqHcSum = 0;
+                let actHcSum = 0;
+                childrenTeamsDataRows.forEach(teamRow => {
+                    const teamPeriodMetric = teamRow.periodicData[period] as TeamPeriodicMetrics;
+                    reqAgentMinutesSum += teamPeriodMetric._calculatedRequiredAgentMinutes ?? 0;
+                    actAgentMinutesSum += teamPeriodMetric._calculatedActualAgentMinutes ?? 0;
+                    reqHcSum += teamPeriodMetric.requiredHC ?? 0;
+                    actHcSum += teamPeriodMetric.actualHC ?? 0;
+                });
+                const adherence = reqAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
+                lobPeriodicData[period] = {
+                    required: reqAgentMinutesSum,
+                    actual: actAgentMinutesSum,
+                    overUnder: actAgentMinutesSum - reqAgentMinutesSum,
+                    adherence: adherence,
+                    requiredHC: reqHcSum,
+                    actualHC: actHcSum,
+                    overUnderHC: actHcSum - reqHcSum,
+                };
+             });
+             // Calculate LOB Summary Column
+             let lobSummaryMetrics = {...initialAggregatedMetrics};
+             periodsToDisplay.forEach(period => {
+                lobSummaryMetrics = aggregateAndSummarizeMetrics(lobSummaryMetrics, lobPeriodicData[period]) as AggregatedPeriodicMetrics;
+             });
+             lobPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = lobSummaryMetrics;
+
+            childrenLobsDataRows.push({
+              id: lobRawEntry.id,
+              name: lobName,
+              level: 1, // BU -> LOB
+              itemType: 'LOB',
+              periodicData: lobPeriodicData,
+              children: childrenTeamsDataRows,
+            });
+            newExpandedItems[lobRawEntry.id] = true; // Expand LOB by default
           }
-        });
-        
-        if (childrenLobs.length > 0 || selectedBusinessUnit === buName) {
+        }); // End of LOBs for BU
+
+        if (childrenLobsDataRows.length > 0) {
+          const buPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
+          periodsToDisplay.forEach(period => {
+            let reqAgentMinutesSum = 0;
+            let actAgentMinutesSum = 0;
+            let reqHcSum = 0;
+            let actHcSum = 0;
+            childrenLobsDataRows.forEach(lobRow => {
+                const lobPeriodMetric = lobRow.periodicData[period] as AggregatedPeriodicMetrics;
+                reqAgentMinutesSum += lobPeriodMetric.required ?? 0;
+                actAgentMinutesSum += lobPeriodMetric.actual ?? 0;
+                reqHcSum += lobPeriodMetric.requiredHC ?? 0;
+                actHcSum += lobPeriodMetric.actualHC ?? 0;
+            });
+            const adherence = reqAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
+            buPeriodicData[period] = {
+                required: reqAgentMinutesSum,
+                actual: actAgentMinutesSum,
+                overUnder: actAgentMinutesSum - reqAgentMinutesSum,
+                adherence: adherence,
+                requiredHC: reqHcSum,
+                actualHC: actHcSum,
+                overUnderHC: actHcSum - reqHcSum,
+            };
+          });
+          // Calculate BU Summary Column
+          let buSummaryMetrics = {...initialAggregatedMetrics};
+          periodsToDisplay.forEach(period => {
+             buSummaryMetrics = aggregateAndSummarizeMetrics(buSummaryMetrics, buPeriodicData[period]) as AggregatedPeriodicMetrics;
+          });
+          buPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = buSummaryMetrics;
+
           newDisplayData.push({
             id: buName,
             name: buName,
             level: 0,
             itemType: 'BU',
-            periodicData: aggregatePeriodicDataForLobOrBu(buRawEntries, periodsToDisplay), // Aggregates all LOBs in this BU
-            children: childrenLobs,
+            periodicData: buPeriodicData,
+            children: childrenLobsDataRows,
           });
-          newExpandedItems[buName] = true; 
+          newExpandedItems[buName] = true; // Expand BU by default
         }
-      });
+      }); // End of BUs
     } else { // GroupBy "Line of Business"
-      const lobsToConsider = selectedLineOfBusiness === "All"
-        ? (selectedBusinessUnit === "All" 
-            ? Array.from(new Set(mockRawCapacityData.map(d => d.lob)))
-            : BUSINESS_UNIT_CONFIG[selectedBusinessUnit as BusinessUnitName].lonsOfBusiness)
-        : [selectedLineOfBusiness];
-      
-      lobsToConsider.forEach(lobName => {
-        // Get RawLoBCapacityEntry for the current LOB (can be from multiple BUs if selectedBU is "All")
-        const lobRawEntries = filteredRawData.filter(d => d.lob === lobName); 
+      // Filter LOBs to consider based on selected BU (if any) and selected LOB
+      const lobsToDisplay = Array.from(new Set(relevantRawLobEntries.map(d => d.lob)));
+
+      lobsToDisplay.forEach(lobName => {
+        const lobRawEntriesForCurrentLob = relevantRawLobEntries.filter(d => d.lob === lobName);
+        if (lobRawEntriesForCurrentLob.length === 0) return;
         
-        if (lobRawEntries.length > 0) {
-          // TODO: Implement Team Level Data processing here as well
-          // const childrenTeams: CapacityDataRow[] = [];
-          // lobRawEntries.forEach(lobEntry => lobEntry.teams.forEach(team => {/* process team */} ));
-          
-          newDisplayData.push({
-            id: lobName.replace(/\s+/g, '-'),
-            name: lobName,
-            level: 0,
-            itemType: 'LOB',
-            periodicData: aggregatePeriodicDataForLobOrBu(lobRawEntries, periodsToDisplay), // Aggregates across BUs if needed
-            // children: childrenTeams, // Will be added later
-          });
-          newExpandedItems[lobName.replace(/\s+/g, '-')] = true;
+        const childrenTeamsDataRows: CapacityDataRow[] = [];
+        // Aggregate teams from all BUs that have this LOB (if selectedBU is "All")
+        lobRawEntriesForCurrentLob.forEach(lobRawEntry => {
+            (lobRawEntry.teams || []).forEach(teamRawEntry => {
+                const periodicTeamMetrics: Record<string, TeamPeriodicMetrics> = {};
+                periodsToDisplay.forEach(period => {
+                periodicTeamMetrics[period] = calculateTeamMetricsForPeriod(
+                    teamRawEntry.periodicInputData[period],
+                    lobRawEntry.lobTotalBaseRequiredMinutes[period],
+                    standardWorkMinutes
+                );
+                });
+                // Calculate Team Summary Column
+                let teamSummaryMetrics = {...initialTeamPeriodMetricsForSum};
+                periodsToDisplay.forEach(period => {
+                    teamSummaryMetrics = aggregateAndSummarizeMetrics(teamSummaryMetrics, periodicTeamMetrics[period]) as TeamPeriodicMetrics;
+                });
+                periodicTeamMetrics[DYNAMIC_SUM_COLUMN_KEY] = teamSummaryMetrics;
+
+                childrenTeamsDataRows.push({
+                id: `${lobRawEntry.id}_${teamRawEntry.teamName.replace(/\s+/g, '-')}`, // Ensure unique ID
+                name: teamRawEntry.teamName,
+                level: 1, // LOB -> Team
+                itemType: 'Team',
+                periodicData: periodicTeamMetrics,
+                });
+            });
+        });
+
+
+        if (childrenTeamsDataRows.length > 0) {
+            const lobPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
+            periodsToDisplay.forEach(period => {
+                let reqAgentMinutesSum = 0;
+                let actAgentMinutesSum = 0;
+                let reqHcSum = 0;
+                let actHcSum = 0;
+                childrenTeamsDataRows.forEach(teamRow => {
+                    const teamPeriodMetric = teamRow.periodicData[period] as TeamPeriodicMetrics;
+                    reqAgentMinutesSum += teamPeriodMetric._calculatedRequiredAgentMinutes ?? 0;
+                    actAgentMinutesSum += teamPeriodMetric._calculatedActualAgentMinutes ?? 0;
+                    reqHcSum += teamPeriodMetric.requiredHC ?? 0;
+                    actHcSum += teamPeriodMetric.actualHC ?? 0;
+                });
+                const adherence = reqAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
+                lobPeriodicData[period] = {
+                    required: reqAgentMinutesSum,
+                    actual: actAgentMinutesSum,
+                    overUnder: actAgentMinutesSum - reqAgentMinutesSum,
+                    adherence: adherence,
+                    requiredHC: reqHcSum,
+                    actualHC: actHcSum,
+                    overUnderHC: actHcSum - reqHcSum,
+                };
+            });
+            // Calculate LOB Summary Column (when grouped by LOB)
+            let lobSummaryMetrics = {...initialAggregatedMetrics};
+            periodsToDisplay.forEach(period => {
+                lobSummaryMetrics = aggregateAndSummarizeMetrics(lobSummaryMetrics, lobPeriodicData[period]) as AggregatedPeriodicMetrics;
+            });
+            lobPeriodicData[DYNAMIC_SUM_COLUMN_KEY] = lobSummaryMetrics;
+
+            const lobId = lobName.replace(/\s+/g, '-');
+            newDisplayData.push({
+                id: lobId,
+                name: lobName,
+                level: 0,
+                itemType: 'LOB',
+                periodicData: lobPeriodicData,
+                children: childrenTeamsDataRows,
+            });
+            newExpandedItems[lobId] = true; // Expand LOB by default
         }
-      });
+      }); // End of LOBs when GroupBy LOB
     }
     
     setDisplayableCapacityData(newDisplayData);
-    setExpandedItems(prev => ({...prev, ...newExpandedItems}));
+    setExpandedItems(prev => ({...prev, ...newExpandedItems})); // Retain existing expanded state if possible, and add new default expansions
   }, [selectedBusinessUnit, selectedLineOfBusiness, selectedGroupBy, selectedTimeInterval, currentPeriodIndex]);
 
 
@@ -268,7 +473,7 @@ export default function CapacityInsightsPage() {
   };
   
   useEffect(() => {
-    setCurrentPeriodIndex(0);
+    setCurrentPeriodIndex(0); // Reset to first page of periods when time interval changes
   }, [selectedTimeInterval]);
 
   return (
@@ -289,11 +494,13 @@ export default function CapacityInsightsPage() {
       <main className="flex-grow overflow-auto p-4">
         <CapacityTable 
           data={displayableCapacityData} 
-          // Ensure the summary key is passed to the table header text replacement logic
           periodHeaders={[...displayedPeriodHeaders, DYNAMIC_SUM_COLUMN_KEY]} 
           expandedItems={expandedItems}
           toggleExpand={toggleExpand}
           dynamicSumKey={DYNAMIC_SUM_COLUMN_KEY}
+          // Pass metric definitions for the table to use
+          teamMetricDefinitions={TEAM_METRIC_ROW_DEFINITIONS}
+          aggregatedMetricDefinitions={AGGREGATED_METRIC_ROW_DEFINITIONS}
         />
       </main>
     </div>
