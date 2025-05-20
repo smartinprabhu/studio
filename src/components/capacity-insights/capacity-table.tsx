@@ -11,18 +11,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowDown, ArrowUp, Minus } from "lucide-react";
+import { ArrowDown, ArrowUp, Minus, ChevronDown } from "lucide-react"; // Added ChevronDown
 import type { CapacityDataRow, CalculatedMetricValues } from "./types";
 import { DYNAMIC_SUM_COLUMN_KEY } from "./types";
 
@@ -37,8 +31,8 @@ interface CapacityTableProps {
 const MetricCellContent: React.FC<{
   metricData: CalculatedMetricValues | undefined;
   metricType: keyof CalculatedMetricValues;
-  itemName: string; // For tooltip context, e.g. "US Chat"
-  periodName: string; // For tooltip context, e.g. "Wk23: 06/04-06/10"
+  itemName: string; 
+  periodName: string;
 }> = ({ metricData, metricType, itemName, periodName }) => {
   if (!metricData) {
     return <Minus className="h-4 w-4 text-muted-foreground mx-auto" />;
@@ -72,10 +66,10 @@ const MetricCellContent: React.FC<{
       if (value !== null) {
         displayValue = value.toLocaleString();
         if (value < 0) {
-          textColor = "text-destructive";
+          textColor = "text-destructive"; // This will be overridden by MetricRow's direct class
           icon = <ArrowDown className="h-3 w-3 inline-block ml-1" />;
         } else if (value > 0) {
-          textColor = "text-primary";
+          textColor = "text-primary"; // This will be overridden by MetricRow's direct class
           icon = <ArrowUp className="h-3 w-3 inline-block ml-1" />;
         }
         tooltipText = `${itemName} - ${periodName}\nOver/Under = Actual - Required\n${actual?.toLocaleString()} - ${required?.toLocaleString()} = ${value.toLocaleString()}`;
@@ -90,7 +84,7 @@ const MetricCellContent: React.FC<{
       break;
   }
 
-  const cellContent = <span className="flex items-center justify-end">{displayValue} {icon}</span>;
+  const cellContent = <span className={`flex items-center justify-end ${textColor}`}>{displayValue} {icon}</span>;
 
   if (tooltipText && value !== null) {
     return (
@@ -112,9 +106,9 @@ const MetricRow: React.FC<{
   label: string;
   metricType: keyof CalculatedMetricValues;
   level: number;
-  periodicData: Record<string, CalculatedMetricValues>; // Keyed by periodHeader
+  periodicData: Record<string, CalculatedMetricValues>;
   periodHeaders: string[];
-  itemName: string; // For tooltip context, e.g. "US Chat"
+  itemName: string;
   isSumColumn: (periodHeader: string) => boolean;
 }> = ({ label, metricType, level, periodicData, periodHeaders, itemName, isSumColumn }) => {
   return (
@@ -127,16 +121,16 @@ const MetricRow: React.FC<{
       </TableCell>
       {periodHeaders.map((periodHeader) => {
         const metricForPeriod = periodicData[periodHeader];
-        let textColor = "text-foreground";
-        if (metricType === "overUnder" && metricForPeriod?.overUnder !== null) {
-            if (metricForPeriod.overUnder! < 0) textColor = "text-destructive";
-            else if (metricForPeriod.overUnder! > 0) textColor = "text-primary";
+        let cellTextColor = "text-foreground";
+        if (metricType === "overUnder" && metricForPeriod?.overUnder !== null && metricForPeriod?.overUnder !== undefined) {
+            if (metricForPeriod.overUnder < 0) cellTextColor = "text-destructive";
+            else if (metricForPeriod.overUnder > 0) cellTextColor = "text-primary";
         }
         
         return (
           <TableCell 
             key={`${itemName}-${label}-${periodHeader}`} 
-            className={`text-right tabular-nums ${textColor} ${isSumColumn(periodHeader) ? 'font-semibold bg-muted/30' : ''}`}
+            className={`text-right tabular-nums ${cellTextColor} ${isSumColumn(periodHeader) ? 'font-semibold bg-muted/30' : ''}`}
           >
             <MetricCellContent metricData={metricForPeriod} metricType={metricType} itemName={itemName} periodName={periodHeader} />
           </TableCell>
@@ -146,14 +140,12 @@ const MetricRow: React.FC<{
   );
 };
 
-// Main function to render rows for a CapacityDataRow item
 const renderCapacityItemContent = (
   item: CapacityDataRow,
   periodHeaders: string[],
   isSumColumn: (ph: string) => boolean
 ): React.ReactNode[] => {
   const rows: React.ReactNode[] = [];
-
   const metricDefinitions: Array<{ key: keyof CalculatedMetricValues; label: string }> = [
     { key: "required", label: "Required" },
     { key: "actual", label: "Actual" },
@@ -161,14 +153,13 @@ const renderCapacityItemContent = (
     { key: "adherence", label: "Adherence (%)" },
   ];
 
-  // Add item's own metrics
   metricDefinitions.forEach(metricDef => {
     rows.push(
       <MetricRow
         key={`${item.id}-${metricDef.key}`}
         label={metricDef.label}
         metricType={metricDef.key}
-        level={item.level + 1} // Metrics are indented under the item name
+        level={item.level + 1} 
         periodicData={item.periodicData}
         periodHeaders={periodHeaders}
         itemName={item.name}
@@ -176,87 +167,85 @@ const renderCapacityItemContent = (
       />
     );
   });
-
   return rows;
 };
 
 
 export function CapacityTable({ data, periodHeaders, expandedItems, toggleExpand, dynamicSumKey }: CapacityTableProps) {
   
-  const isSumColumn = (periodHeader: string) => periodHeader.includes("Total"); // Or use dynamicSumKey
+  const isSumColumn = (periodHeader: string) => periodHeader === dynamicSumKey || periodHeader.includes("Total");
 
-  const renderTableItem = (item: CapacityDataRow): React.ReactNode => {
-    const itemMetricRows = renderCapacityItemContent(item, periodHeaders, isSumColumn);
+  const renderTableItem = (item: CapacityDataRow): React.ReactNode[] => {
+    const rows: React.ReactNode[] = [];
+    const isExpanded = expandedItems[item.id] || false;
 
-    if (item.children && item.children.length > 0) {
-      // This item is an expandable category
-      return (
-        <AccordionItem value={item.id} key={item.id} className="border-b-0">
-           <TableRow className="bg-card-foreground/5 hover:bg-card-foreground/10 ">
-            <TableCell 
-              colSpan={periodHeaders.length + 1} 
-              className="p-0 sticky left-0 z-20 bg-card" // Increased z-index
-            >
-              <AccordionTrigger 
-                className="py-3 px-4 font-semibold text-foreground hover:no-underline w-full text-left data-[state=open]:bg-primary/10"
-                style={{ paddingLeft: `${item.level * 1.5 + 1}rem` }}
-                onClick={() => toggleExpand(item.id)}
-              >
-                {item.name}
-              </AccordionTrigger>
-            </TableCell>
-          </TableRow>
-          {expandedItems[item.id] && (
-            <AccordionContent className="p-0">
-              {/* Render children's metric rows directly if they are leaf nodes, or recursively call renderTableItem */}
-              {item.children.map(child => 
-                (child.children && child.children.length > 0) 
-                  ? renderTableItem(child) // Child is also an accordion
-                  : ( // Child is a leaf node, render its name and metrics
-                    <React.Fragment key={child.id}>
-                      <TableRow className="hover:bg-card-foreground/5">
-                        <TableCell 
-                          className="sticky left-0 z-10 bg-card font-medium text-foreground whitespace-nowrap"
-                          style={{ paddingLeft: `${child.level * 1.5 + 1}rem` }}
-                        >
-                          {child.name}
-                        </TableCell>
-                         {/* Placeholder cells for alignment under period headers */}
-                        {periodHeaders.map(ph => <TableCell key={`${child.id}-${ph}-ph`} className={isSumColumn(ph) ? 'bg-muted/30' : ''}></TableCell>)}
-                      </TableRow>
-                      {renderCapacityItemContent(child, periodHeaders, isSumColumn)}
-                    </React.Fragment>
-                  )
-              )}
-            </AccordionContent>
-          )}
-        </AccordionItem>
-      );
-    } else {
-      // This item is a leaf node (not expandable itself)
-      return (
-        <React.Fragment key={item.id}>
-          <TableRow className="bg-card-foreground/5 hover:bg-card-foreground/10">
-            <TableCell 
-              className="sticky left-0 z-10 bg-card font-semibold text-foreground whitespace-nowrap"
+    // Row for the item itself (category name or leaf node name)
+    rows.push(
+      <TableRow 
+        key={`${item.id}-name`} 
+        className={`${(item.children && item.children.length > 0) ? 'bg-card-foreground/5 hover:bg-card-foreground/10' : 'hover:bg-card-foreground/5'}`}
+      >
+        {item.children && item.children.length > 0 ? (
+          // Expandable Category Header Row
+          <TableCell 
+            colSpan={1} // Only spans the first cell for the trigger
+            className="p-0 sticky left-0 z-20 bg-card whitespace-nowrap"
+          >
+            <button
+              onClick={() => toggleExpand(item.id)}
+              className="py-3 px-4 font-semibold text-foreground hover:no-underline w-full text-left flex items-center justify-between"
               style={{ paddingLeft: `${item.level * 1.5 + 1}rem` }}
+              aria-expanded={isExpanded}
             >
               {item.name}
-            </TableCell>
-            {/* Placeholder cells for alignment under period headers */}
-            {periodHeaders.map(ph => <TableCell key={`${item.id}-${ph}-ph`} className={isSumColumn(ph) ? 'bg-muted/30' : ''}></TableCell>)}
-          </TableRow>
-          {itemMetricRows}
-        </React.Fragment>
-      );
-    }
-  };
+              <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+            </button>
+          </TableCell>
+        ) : (
+          // Leaf Node Name Cell
+          <TableCell 
+            className="sticky left-0 z-10 bg-card font-semibold text-foreground whitespace-nowrap"
+            style={{ paddingLeft: `${item.level * 1.5 + 1}rem` }}
+          >
+            {item.name}
+          </TableCell>
+        )}
+        {/* Placeholder/Data cells for the rest of the header row columns */}
+        {periodHeaders.map((ph, index) => {
+          // For expandable category headers, cells after the first should be empty or styled as part of the header
+          // For leaf nodes, these would be the data cells if metrics were on the same line, but they are on separate MetricRows. So, empty.
+           if (item.children && item.children.length > 0 && index === 0) { // Already handled by colSpan logic for the first cell
+             return null;
+           }
+            const isHeaderSumCol = isSumColumn(ph);
+            // For category header rows, render empty cells.
+            // For leaf name rows, also render empty cells as metrics are on sub-rows.
+             return (
+                <TableCell key={`${item.id}-${ph}-headerplaceholder`} className={`${isHeaderSumCol ? 'font-semibold bg-muted/30' : ''} ${ (item.children && item.children.length > 0) ? 'py-3' : ''}`}></TableCell>
+             );
+        })}
+      </TableRow>
+    );
 
-  const tableWrapperRef = React.useRef<HTMLDivElement>(null);
+    // If it's a leaf node OR an expanded category, render its metric rows
+    if (!item.children || item.children.length === 0 || isExpanded) {
+      const itemMetricRows = renderCapacityItemContent(item, periodHeaders, isSumColumn);
+      rows.push(...itemMetricRows);
+    }
+
+    // If it's an expanded category, recursively render its children
+    if (item.children && item.children.length > 0 && isExpanded) {
+      item.children.forEach(child => {
+        rows.push(...renderTableItem(child)); 
+      });
+    }
+    
+    return rows;
+  };
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div ref={tableWrapperRef} className="overflow-x-auto relative border border-border rounded-md shadow-md">
+      <div className="overflow-x-auto relative border border-border rounded-md shadow-md">
         <Table className="min-w-full">
           <TableHeader className="sticky top-0 z-40 bg-card"> 
             <TableRow>
@@ -267,7 +256,7 @@ export function CapacityTable({ data, periodHeaders, expandedItems, toggleExpand
                 <TableHead 
                   key={period} 
                   className={`text-right min-w-[150px] whitespace-nowrap ${isSumColumn(period) ? 'font-bold bg-muted/50 sticky right-0 z-30 shadow-sm' : ''}`}
-                  style={isSumColumn(period) ? { right: 0 } : {}} // Ensure sum column is sticky if it's the last
+                  style={isSumColumn(period) ? { right: 0 } : {}} 
                 >
                   {period.replace(DYNAMIC_SUM_COLUMN_KEY, "Summary")}
                 </TableHead>
@@ -276,14 +265,7 @@ export function CapacityTable({ data, periodHeaders, expandedItems, toggleExpand
           </TableHeader>
           <TableBody>
             {data.length > 0 ? (
-              <Accordion 
-                type="multiple" 
-                className="w-full" 
-                value={Object.keys(expandedItems).filter(key => expandedItems[key])}
-                // onValueChange={(values) => { /* Optionally handle accordion changes here if needed */ }}
-              >
-                {data.map(item => renderTableItem(item))}
-              </Accordion>
+              data.flatMap(item => renderTableItem(item))
             ) : (
               <TableRow>
                 <TableCell colSpan={periodHeaders.length + 1} className="text-center text-muted-foreground h-24">
@@ -297,3 +279,4 @@ export function CapacityTable({ data, periodHeaders, expandedItems, toggleExpand
     </TooltipProvider>
   );
 }
+
