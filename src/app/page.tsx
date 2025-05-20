@@ -17,14 +17,14 @@ import {
   NUM_PERIODS_DISPLAYED,
   BUSINESS_UNIT_CONFIG,
   ALL_BUSINESS_UNITS, 
-  GroupByOption,
   TeamName,
   TEAM_METRIC_ROW_DEFINITIONS,
   AGGREGATED_METRIC_ROW_DEFINITIONS,
   RawTeamDataEntry,
+  LineOfBusinessName,
 } from "@/components/capacity-insights/types";
 import type { MetricDefinition } from "@/components/capacity-insights/types";
-import { getWeek, getMonth, getYear, parse as dateParse, format as formatDateFn } from 'date-fns';
+import { getWeek, getMonth, getYear, parse as dateParse, format as formatDateFn, startOfWeek, endOfWeek, isWithinInterval as isWithinIntervalFns } from 'date-fns';
 
 
 const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60; // 40 hours * 60 minutes
@@ -92,16 +92,44 @@ const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): num
   const now = new Date();
   if (interval === "Week") {
     const currentYear = getYear(now);
-    const currentWeekOfYear = getWeek(now, { weekStartsOn: 1 }); // ISO week
-    const targetHeaderPrefix = `Wk${currentWeekOfYear}:`;
-    const targetHeaderSuffix = `(${currentYear})`;
+    // Ensure week starts on Monday for ISO-like behavior, adjust if your week starts differently
+    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 }); 
     
-    const foundIndex = headers.findIndex(h => h.startsWith(targetHeaderPrefix) && h.endsWith(targetHeaderSuffix));
-    if (foundIndex !== -1) return foundIndex;
+    for (let i = 0; i < headers.length; i++) {
+        const header = headers[i];
+        const yearMatch = header.match(/\((\d{4})\)/);
+        const dateRangeMatch = header.match(/(\d{2}\/\d{2})-(\d{2}\/\d{2})/);
 
-    // Fallback: if current year's week not found (e.g. data starts/ends mid-year for a different year)
-    // or if headers are less than current week, just return 0 or a sensible default.
-    // For this app, since headers span multiple years, this precise matching is better.
+        if (yearMatch && dateRangeMatch) {
+            const headerYear = parseInt(yearMatch[1]);
+            if (headerYear !== currentYear) continue;
+
+            const [startDateStr, endDateStr] = dateRangeMatch.slice(1);
+            
+            // Create Date objects for the start and end of the week from the header
+            // Assuming MM/DD format and the headerYear
+            const [startMonth, startDay] = startDateStr.split('/').map(Number);
+            const [endMonth, endDay] = endDateStr.split('/').map(Number);
+
+            // Month is 0-indexed in JavaScript Date
+            const headerWeekStartDate = new Date(headerYear, startMonth - 1, startDay);
+            const headerWeekEndDate = new Date(headerYear, endMonth - 1, endDay, 23, 59, 59); // Include whole end day
+
+            if (isWithinIntervalFns(now, { start: headerWeekStartDate, end: headerWeekEndDate })) {
+                return i;
+            }
+        } else {
+             // Fallback for WkX: prefix if full date parsing fails or isn't needed
+            const weekNumMatch = header.match(/Wk(\d+):/);
+            if (weekNumMatch) {
+                const headerWeekNum = parseInt(weekNumMatch[1]);
+                const currentWeekOfYear = getWeek(now, { weekStartsOn: 1 }); // ISO week
+                 if (headerWeekNum === currentWeekOfYear && header.includes(`(${currentYear})`)) {
+                    return i;
+                }
+            }
+        }
+    }
   } else if (interval === "Month") {
     const currentMonthStr = formatDateFn(now, "MMMM yyyy"); // e.g., "July 2024"
     const foundIndex = headers.findIndex(h => h === currentMonthStr);
@@ -116,9 +144,8 @@ export default function CapacityInsightsPage() {
   const [filterOptions, setFilterOptions] = useState(mockFilterOptions);
   const [displayableCapacityData, setDisplayableCapacityData] = useState<CapacityDataRow[]>([]);
   
-  const [selectedBusinessUnit, setSelectedBusinessUnit] = useState<BusinessUnitName | "All">("All");
-  const [selectedLineOfBusiness, setSelectedLineOfBusiness] = useState<string>("All");
-  const [selectedGroupBy, setSelectedGroupBy] = useState<GroupByOption>(filterOptions.groupByOptions[0]);
+  const [selectedBusinessUnit, setSelectedBusinessUnit] = useState<BusinessUnitName>(ALL_BUSINESS_UNITS[0]); // Default to WFS
+  const [selectedLineOfBusiness, setSelectedLineOfBusiness] = useState<string[]>([]);
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
   
   const [currentPeriodIndex, setCurrentPeriodIndex] = useState<number>(0); 
@@ -273,20 +300,40 @@ export default function CapacityInsightsPage() {
     }
   }, [selectedTimeInterval]);
 
+  const handleBusinessUnitChange = useCallback((bu: BusinessUnitName) => {
+    setSelectedBusinessUnit(bu);
+    // When BU changes, reset LOB filter to "All LOBs" for that BU
+    const newLobsForBu = BUSINESS_UNIT_CONFIG[bu].lonsOfBusiness;
+    setSelectedLineOfBusiness([...newLobsForBu]); // Select all LOBs by default for the new BU
+    setFilterOptions(prev => {
+        const currentLobs = ["All", ...newLobsForBu];
+        if (JSON.stringify(prev.linesOfBusiness) !== JSON.stringify(currentLobs)) {
+            return { ...prev, linesOfBusiness: currentLobs };
+        }
+        return prev;
+    });
+  }, []);
+  
+  const handleLOBChange = useCallback((lobs: string[]) => {
+      setSelectedLineOfBusiness(lobs);
+  }, []);
+
 
   useEffect(() => {
-    if (selectedBusinessUnit === "All") {
-      const allLobs = Object.values(BUSINESS_UNIT_CONFIG).flatMap(bu => bu.lonsOfBusiness);
-      const uniqueLobs = Array.from(new Set(allLobs));
-      setFilterOptions(prev => ({ ...prev, linesOfBusiness: ["All", ...uniqueLobs] }));
-    } else {
-      setFilterOptions(prev => ({ 
-        ...prev, 
-        linesOfBusiness: ["All", ...BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness] 
-      }));
-    }
-    setSelectedLineOfBusiness("All");
-  }, [selectedBusinessUnit]);
+    // Initialize LOB filters when component mounts or selectedBusinessUnit is first set
+    const initialLobsForBu = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
+    setSelectedLineOfBusiness([...initialLobsForBu]);
+    setFilterOptions(prev => {
+        const currentLobs = [...initialLobsForBu]; // No "All" here for the actual list
+         // The DropdownMenu component will handle the "All X LOBs selected" display logic.
+        return {
+          ...prev,
+          businessUnits: [...ALL_BUSINESS_UNITS], // Ensure this is just the names
+          linesOfBusiness: currentLobs,
+        };
+    });
+  }, [selectedBusinessUnit]); // Rerun when selectedBusinessUnit changes to set defaults
+  
   
   const processDataForTable = useCallback(() => {
     const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
@@ -294,35 +341,39 @@ export default function CapacityInsightsPage() {
     setDisplayedPeriodHeaders(periodsToDisplay);
     const standardWorkMinutes = selectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
 
-    let relevantRawLobEntries = rawCapacityDataSource; 
-    if (selectedBusinessUnit !== "All") {
-      relevantRawLobEntries = relevantRawLobEntries.filter(d => d.bu === selectedBusinessUnit);
+    let relevantRawLobEntries = rawCapacityDataSource.filter(d => d.bu === selectedBusinessUnit);
+    
+    // Filter by selected LOBs if not all are implicitly selected
+    const allLobsForSelectedBu = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
+    if (selectedLineOfBusiness.length !== allLobsForSelectedBu.length || !allLobsForSelectedBu.every(lob => selectedLineOfBusiness.includes(lob))) {
+        relevantRawLobEntries = relevantRawLobEntries.filter(d => selectedLineOfBusiness.includes(d.lob));
     }
-    if (selectedLineOfBusiness !== "All") {
-      relevantRawLobEntries = relevantRawLobEntries.filter(d => d.lob === selectedLineOfBusiness);
-    }
+
 
     const newDisplayData: CapacityDataRow[] = [];
     const newExpandedItemsSeed: Record<string, boolean> = {}; 
 
-    if (selectedGroupBy === "Business Unit") {
-      const busToProcess = selectedBusinessUnit === "All" ? ALL_BUSINESS_UNITS : [selectedBusinessUnit];
+    const buName = selectedBusinessUnit;
+    const buRawLobEntries = relevantRawLobEntries; // Already filtered by selected BU
+    if (buRawLobEntries.length === 0 && selectedLineOfBusiness.length === 0) { // If no LOBs selected and BU has no matching entries
+        setDisplayableCapacityData([]);
+        setExpandedItems({});
+        return;
+    }
 
-      busToProcess.forEach(buName => {
-        const buRawLobEntries = relevantRawLobEntries.filter(entry => entry.bu === buName);
-        if (buRawLobEntries.length === 0) return;
 
-        const childrenLobsDataRows: CapacityDataRow[] = [];
-        BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness.forEach(lobName => {
-          const lobRawEntry = buRawLobEntries.find(entry => entry.lob === lobName);
-          if (!lobRawEntry) return;
+    const childrenLobsDataRows: CapacityDataRow[] = [];
+    // Iterate over LOBs defined for the selected BU, but only process those in selectedLineOfBusiness
+    BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness.forEach(lobName => {
+        if (!selectedLineOfBusiness.includes(lobName)) {
+            return; // Skip LOB if not in the multi-selected list
+        }
+
+        const lobRawEntry = buRawLobEntries.find(entry => entry.lob === lobName);
+        if (!lobRawEntry) return;
           
-          if (selectedLineOfBusiness !== "All" && selectedLineOfBusiness !== lobName) {
-            return;
-          }
-
-          const childrenTeamsDataRows: CapacityDataRow[] = [];
-          (lobRawEntry.teams || []).forEach(teamRawEntry => {
+        const childrenTeamsDataRows: CapacityDataRow[] = [];
+        (lobRawEntry.teams || []).forEach(teamRawEntry => {
             const periodicTeamMetrics: Record<string, TeamPeriodicMetrics> = {};
             periodsToDisplay.forEach(period => {
               periodicTeamMetrics[period] = calculateTeamMetricsForPeriod(
@@ -340,169 +391,91 @@ export default function CapacityInsightsPage() {
               periodicData: periodicTeamMetrics,
               lobId: lobRawEntry.id, 
             });
-          }); 
-
-          if (childrenTeamsDataRows.length > 0 || (selectedLineOfBusiness === "All" || selectedLineOfBusiness === lobName)) {
-             const lobPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
-             periodsToDisplay.forEach(period => {
-                let reqAgentMinutesSum = 0;
-                let actAgentMinutesSum = 0;
-                let reqHcSum = 0;
-                let actHcSum = 0;
-                let overUnderHcSum = 0;
-
-                childrenTeamsDataRows.forEach(teamRow => {
-                    const teamPeriodMetric = teamRow.periodicData[period] as TeamPeriodicMetrics;
-                    if (teamPeriodMetric) {
-                        reqAgentMinutesSum += teamPeriodMetric._calculatedRequiredAgentMinutes ?? 0;
-                        actAgentMinutesSum += teamPeriodMetric._calculatedActualAgentMinutes ?? 0;
-                        reqHcSum += teamPeriodMetric.requiredHC ?? 0;
-                        actHcSum += teamPeriodMetric.actualHC ?? 0;
-                        overUnderHcSum += teamPeriodMetric.overUnderHC ?? 0;
-                    }
-                });
-                const adherence = reqAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
-                lobPeriodicData[period] = {
-                    required: reqAgentMinutesSum, 
-                    actual: actAgentMinutesSum,   
-                    overUnder: actAgentMinutesSum - reqAgentMinutesSum,
-                    adherence: adherence,
-                    requiredHC: reqHcSum,
-                    actualHC: actHcSum,
-                    overUnderHC: actHcSum - reqHcSum, // Recalculate for aggregate consistency
-                };
-             });
-             
-            childrenLobsDataRows.push({
-              id: lobRawEntry.id,
-              name: lobName,
-              level: 1, 
-              itemType: 'LOB',
-              periodicData: lobPeriodicData,
-              children: childrenTeamsDataRows,
-            });
-            newExpandedItemsSeed[lobRawEntry.id] = true; 
-          }
         }); 
 
-        if (childrenLobsDataRows.length > 0) {
-          const buPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
-          periodsToDisplay.forEach(period => {
+        const lobPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
+        periodsToDisplay.forEach(period => {
             let reqAgentMinutesSum = 0;
             let actAgentMinutesSum = 0;
             let reqHcSum = 0;
             let actHcSum = 0;
-            childrenLobsDataRows.forEach(lobRow => {
-                const lobPeriodMetric = lobRow.periodicData[period] as AggregatedPeriodicMetrics;
-                 if (lobPeriodMetric) {
-                    reqAgentMinutesSum += lobPeriodMetric.required ?? 0;
-                    actAgentMinutesSum += lobPeriodMetric.actual ?? 0;
-                    reqHcSum += lobPeriodMetric.requiredHC ?? 0;
-                    actHcSum += lobPeriodMetric.actualHC ?? 0;
-                 }
+
+            childrenTeamsDataRows.forEach(teamRow => {
+                const teamPeriodMetric = teamRow.periodicData[period] as TeamPeriodicMetrics;
+                if (teamPeriodMetric) {
+                    reqAgentMinutesSum += teamPeriodMetric._calculatedRequiredAgentMinutes ?? 0;
+                    actAgentMinutesSum += teamPeriodMetric._calculatedActualAgentMinutes ?? 0;
+                    reqHcSum += teamPeriodMetric.requiredHC ?? 0;
+                    actHcSum += teamPeriodMetric.actualHC ?? 0;
+                }
             });
             const adherence = reqAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
-            buPeriodicData[period] = {
-                required: reqAgentMinutesSum,
-                actual: actAgentMinutesSum,
+            lobPeriodicData[period] = {
+                required: reqAgentMinutesSum, 
+                actual: actAgentMinutesSum,   
                 overUnder: actAgentMinutesSum - reqAgentMinutesSum,
                 adherence: adherence,
                 requiredHC: reqHcSum,
                 actualHC: actHcSum,
                 overUnderHC: actHcSum - reqHcSum,
             };
-          });
-          
-          newDisplayData.push({
-            id: buName,
-            name: buName,
-            level: 0,
-            itemType: 'BU',
-            periodicData: buPeriodicData,
-            children: childrenLobsDataRows,
-          });
-          newExpandedItemsSeed[buName] = true; 
-        }
-      }); 
-    } else { // GroupBy "Line of Business"
-      const lobsToDisplay = Array.from(new Set(relevantRawLobEntries.map(d => d.lob)));
-
-      lobsToDisplay.forEach(lobName => {
-        const lobRawEntriesForCurrentLob = relevantRawLobEntries.filter(d => d.lob === lobName);
-        if (lobRawEntriesForCurrentLob.length === 0) return;
-        
-        const childrenTeamsDataRows: CapacityDataRow[] = [];
-        const lobIdForDisplay = lobName.toLowerCase().replace(/\s+/g, '-'); 
-        
-        lobRawEntriesForCurrentLob.forEach(lobRawEntry => { 
-            (lobRawEntry.teams || []).forEach(teamRawEntry => {
-                const periodicTeamMetrics: Record<string, TeamPeriodicMetrics> = {};
-                periodsToDisplay.forEach(period => {
-                periodicTeamMetrics[period] = calculateTeamMetricsForPeriod(
-                    teamRawEntry.periodicInputData[period] || {},
-                    lobRawEntry.lobTotalBaseRequiredMinutes[period],
-                    standardWorkMinutes
-                );
-                });
-                
-                childrenTeamsDataRows.push({
-                  id: `${lobRawEntry.id}_${teamRawEntry.teamName.replace(/\s+/g, '-')}`, 
-                  name: teamRawEntry.teamName,
-                  level: 1, 
-                  itemType: 'Team',
-                  periodicData: periodicTeamMetrics,
-                  lobId: lobRawEntry.id, 
-                });
-            });
         });
+             
+        childrenLobsDataRows.push({
+          id: lobRawEntry.id,
+          name: lobName,
+          level: 1, 
+          itemType: 'LOB',
+          periodicData: lobPeriodicData,
+          children: childrenTeamsDataRows,
+        });
+        newExpandedItemsSeed[lobRawEntry.id] = expandedItems[lobRawEntry.id] !== undefined ? expandedItems[lobRawEntry.id] : true; 
+    }); 
 
-
-        if (childrenTeamsDataRows.length > 0) {
-            const lobPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
-            periodsToDisplay.forEach(period => {
-                let reqAgentMinutesSum = 0;
-                let actAgentMinutesSum = 0;
-                let reqHcSum = 0;
-                let actHcSum = 0;
-                childrenTeamsDataRows.forEach(teamRow => {
-                    const teamPeriodMetric = teamRow.periodicData[period] as TeamPeriodicMetrics;
-                    if (teamPeriodMetric) {
-                        reqAgentMinutesSum += teamPeriodMetric._calculatedRequiredAgentMinutes ?? 0;
-                        actAgentMinutesSum += teamPeriodMetric._calculatedActualAgentMinutes ?? 0;
-                        reqHcSum += teamPeriodMetric.requiredHC ?? 0;
-                        actHcSum += teamPeriodMetric.actualHC ?? 0;
-                    }
-                });
-                const adherence = reqAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
-                lobPeriodicData[period] = {
-                    required: reqAgentMinutesSum,
-                    actual: actAgentMinutesSum,
-                    overUnder: actAgentMinutesSum - reqAgentMinutesSum,
-                    adherence: adherence,
-                    requiredHC: reqHcSum,
-                    actualHC: actHcSum,
-                    overUnderHC: actHcSum - reqHcSum,
-                };
-            });
-            
-            newDisplayData.push({
-                id: lobIdForDisplay, 
-                name: lobName,
-                level: 0,
-                itemType: 'LOB',
-                periodicData: lobPeriodicData,
-                children: childrenTeamsDataRows,
-            });
-            newExpandedItemsSeed[lobIdForDisplay] = true; 
-        }
-      }); 
+    if (childrenLobsDataRows.length > 0 || selectedLineOfBusiness.length > 0) {
+      const buPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
+      periodsToDisplay.forEach(period => {
+        let reqAgentMinutesSum = 0;
+        let actAgentMinutesSum = 0;
+        let reqHcSum = 0;
+        let actHcSum = 0;
+        childrenLobsDataRows.forEach(lobRow => {
+            const lobPeriodMetric = lobRow.periodicData[period] as AggregatedPeriodicMetrics;
+              if (lobPeriodMetric) {
+                reqAgentMinutesSum += lobPeriodMetric.required ?? 0;
+                actAgentMinutesSum += lobPeriodMetric.actual ?? 0;
+                reqHcSum += lobPeriodMetric.requiredHC ?? 0;
+                actHcSum += lobPeriodMetric.actualHC ?? 0;
+              }
+        });
+        const adherence = reqAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
+        buPeriodicData[period] = {
+            required: reqAgentMinutesSum,
+            actual: actAgentMinutesSum,
+            overUnder: actAgentMinutesSum - reqAgentMinutesSum,
+            adherence: adherence,
+            requiredHC: reqHcSum,
+            actualHC: actHcSum,
+            overUnderHC: actHcSum - reqHcSum,
+        };
+      });
+      
+      newDisplayData.push({
+        id: buName,
+        name: buName,
+        level: 0,
+        itemType: 'BU',
+        periodicData: buPeriodicData,
+        children: childrenLobsDataRows,
+      });
+      newExpandedItemsSeed[buName] = expandedItems[buName] !== undefined ? expandedItems[buName] : true; 
     }
     
     setDisplayableCapacityData(newDisplayData);
     setExpandedItems(prev => {
         const updatedExpanded = {...prev};
         Object.keys(newExpandedItemsSeed).forEach(key => {
-            if (updatedExpanded[key] === undefined) {
+            if (updatedExpanded[key] === undefined) { // Only set if not previously set by user
                 updatedExpanded[key] = newExpandedItemsSeed[key];
             }
         });
@@ -511,10 +484,10 @@ export default function CapacityInsightsPage() {
   }, [
       selectedBusinessUnit, 
       selectedLineOfBusiness, 
-      selectedGroupBy, 
       selectedTimeInterval, 
       currentPeriodIndex,
-      rawCapacityDataSource 
+      rawCapacityDataSource,
+      expandedItems // Add expandedItems here to preserve state on re-renders not caused by explicit toggle
     ]);
 
 
@@ -534,13 +507,20 @@ export default function CapacityInsightsPage() {
       if (selectedTimeInterval === "Week") {
         const firstDateMatch = firstPeriodFull.match(/:\s*(\d{2}\/\d{2})/);
         const firstYearMatch = firstPeriodFull.match(/\((\d{4})\)/);
-        const lastDateMatch = lastPeriodFull.match(/-(\d{2}\/\d{2})/);
-        const lastYearMatch = lastPeriodFull.match(/\((\d{4})\)/);
+        const lastDateMatch = lastPeriodFull.match(/-(\d{2}\/\d{2})/); // Ensure this matches the end date correctly
+        const lastDateFullMatch = lastPeriodFull.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
+
 
         const firstDateStr = firstDateMatch ? firstDateMatch[1] : '';
         const firstYearStr = firstYearMatch ? firstYearMatch[1] : '';
-        const lastDateStr = lastDateMatch ? lastDateMatch[1] : '';
-        const lastYearStr = lastYearMatch ? lastYearMatch[1] : '';
+        let lastDateStr = '';
+        let lastYearStr = '';
+
+        if (lastDateFullMatch) {
+            lastDateStr = lastDateFullMatch[2]; // The second capture group is the end date MM/DD
+            lastYearStr = lastDateFullMatch[3]; // The third capture group is the year
+        }
+
 
         if (firstDateStr && lastDateStr && firstYearStr && lastYearStr) {
           if (firstYearStr === lastYearStr) {
@@ -548,7 +528,7 @@ export default function CapacityInsightsPage() {
           } else {
             setCurrentDateDisplay(`${firstDateStr}/${firstYearStr} - ${lastDateStr}/${lastYearStr}`);
           }
-        } else if (firstDateStr && firstYearStr) {
+        } else if (firstDateStr && firstYearStr) { // Only one week in block
            setCurrentDateDisplay(`${firstDateStr} (${firstYearStr})`);
         } else {
            setCurrentDateDisplay("N/A");
@@ -559,7 +539,7 @@ export default function CapacityInsightsPage() {
     } else {
       setCurrentDateDisplay("N/A");
     }
-  }, [selectedTimeInterval, currentPeriodIndex, displayedPeriodHeaders]);
+  }, [selectedTimeInterval, currentPeriodIndex, displayedPeriodHeaders]); // displayedPeriodHeaders might be redundant if others cover it
 
   const handleNavigateTime = (direction: "prev" | "next") => {
     const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
@@ -575,9 +555,9 @@ export default function CapacityInsightsPage() {
     setDynamicDateDisplay(null); // Reset dynamic display on pagination
   };
 
-  const toggleExpand = (id: string) => {
+  const toggleExpand = useCallback((id: string) => {
     setExpandedItems(prev => ({ ...prev, [id]: !prev[id] }));
-  };
+  }, []);
   
   useEffect(() => {
     setCurrentPeriodIndex(0); 
@@ -589,11 +569,9 @@ export default function CapacityInsightsPage() {
       <HeaderSection
         filterOptions={filterOptions}
         selectedBusinessUnit={selectedBusinessUnit}
-        onSelectBusinessUnit={(val) => setSelectedBusinessUnit(val as BusinessUnitName | "All")}
+        onSelectBusinessUnit={handleBusinessUnitChange}
         selectedLineOfBusiness={selectedLineOfBusiness}
-        onSelectLineOfBusiness={setSelectedLineOfBusiness}
-        selectedGroupBy={selectedGroupBy}
-        onSelectGroupBy={(val) => setSelectedGroupBy(val as GroupByOption)}
+        onSelectLineOfBusiness={handleLOBChange}
         selectedTimeInterval={selectedTimeInterval}
         onSelectTimeInterval={(val) => setSelectedTimeInterval(val as TimeInterval)}
         currentDateDisplay={dynamicDateDisplay || currentDateDisplay}
@@ -614,3 +592,5 @@ export default function CapacityInsightsPage() {
     </div>
   );
 }
+
+    

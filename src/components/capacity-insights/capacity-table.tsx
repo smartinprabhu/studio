@@ -47,7 +47,7 @@ interface MetricCellContentProps {
   onTeamMetricChange: CapacityTableProps['onTeamMetricChange'];
 }
 
-const MetricCellContent: React.FC<MetricCellContentProps> = ({
+const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
   item,
   metricData,
   metricDef,
@@ -82,6 +82,8 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
                  onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, ""); 
             } else if (!isNaN(val)) {
                  onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, String(val));
+            } else if (e.target.value === "" && rawValue !== null) { // Handle clearing the input
+                 onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, "");
             }
         }}
         className="h-8 w-full max-w-[100px] text-right tabular-nums px-1 py-0.5 text-xs bg-background border-input focus:border-primary focus:ring-1 focus:ring-primary"
@@ -131,9 +133,9 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
     } else if (metricDef.key === "overUnderHC" && 'actualHC' in metricData && 'requiredHC' in metricData && typeof metricData.actualHC === 'number' && typeof metricData.requiredHC === 'number') {
       tooltipText = `${item.name} - ${periodName}\nOver/Under HC = Actual HC - Required HC\n${metricData.actualHC.toFixed(2)} - ${metricData.requiredHC.toFixed(2)} = ${numValue.toFixed(2)}`;
     }
-  } else if (metricDef.key === "adherence" && 'actual' in metricData && 'required' in metricData && typeof metricData.actual === 'number' && typeof metricData.required === 'number' && metricData.required !== 0) {
-    tooltipText = `${item.name} - ${periodName}\nAdherence = (Actual Mins / Required Mins) * 100%\n(${metricData.actual.toLocaleString(undefined, {maximumFractionDigits:0})} / ${metricData.required.toLocaleString(undefined, {maximumFractionDigits:0})}) * 100 = ${numValue.toFixed(1)}%`;
-  } else if (metricDef.key === "adherence" && metricData.required === 0) {
+  } else if (metricDef.key === "adherence" && metricData && 'actual' in metricData && 'required' in metricData && typeof (metricData as AggregatedPeriodicMetrics).actual === 'number' && typeof (metricData as AggregatedPeriodicMetrics).required === 'number' && (metricData as AggregatedPeriodicMetrics).required !== 0) {
+    tooltipText = `${item.name} - ${periodName}\nAdherence = (Actual Mins / Required Mins) * 100%\n(${(metricData as AggregatedPeriodicMetrics).actual!.toLocaleString(undefined, {maximumFractionDigits:0})} / ${(metricData as AggregatedPeriodicMetrics).required!.toLocaleString(undefined, {maximumFractionDigits:0})}) * 100 = ${numValue.toFixed(1)}%`;
+  } else if (metricDef.key === "adherence" && metricData && (metricData as AggregatedPeriodicMetrics).required === 0) {
      tooltipText = `${item.name} - ${periodName}\nAdherence: N/A (Required Mins is 0)`;
   }
 
@@ -153,7 +155,9 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
     );
   }
   return cellContent;
-};
+});
+MetricCellContent.displayName = 'MetricCellContent';
+
 
 interface MetricRowProps {
   item: CapacityDataRow;
@@ -163,7 +167,7 @@ interface MetricRowProps {
   onTeamMetricChange: CapacityTableProps['onTeamMetricChange'];
 }
 
-const MetricRow: React.FC<MetricRowProps> = ({ item, metricDef, level, periodHeaders, onTeamMetricChange }) => {
+const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level, periodHeaders, onTeamMetricChange }) => {
   return (
     <TableRow className="hover:bg-card-foreground/5">
       <TableCell
@@ -199,7 +203,8 @@ const MetricRow: React.FC<MetricRowProps> = ({ item, metricDef, level, periodHea
       })}
     </TableRow>
   );
-};
+});
+MetricRow.displayName = 'MetricRow';
 
 const renderCapacityItemContent = (
   item: CapacityDataRow,
@@ -234,7 +239,7 @@ const renderCapacityItemContent = (
 };
 
 
-export function CapacityTable({ 
+const CapacityTableComponent: React.FC<CapacityTableProps> = ({ 
     data, 
     periodHeaders, 
     expandedItems, 
@@ -243,7 +248,7 @@ export function CapacityTable({
     aggregatedMetricDefinitions,
     onTeamMetricChange,
     onVisiblePeriodsChange,
-}: CapacityTableProps) {
+}) => {
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const weekHeaderRefs = useRef<(HTMLTableCellElement | null)[]>([]);
@@ -262,8 +267,6 @@ export function CapacityTable({
         const visibleHeaders: string[] = [];
         entries.forEach(entry => {
           if (entry.isIntersecting) {
-            // Find the header string from periodHeaders based on the target element
-            // This requires knowing the index or having a data attribute on the element
             const headerIndex = weekHeaderRefs.current.findIndex(ref => ref === entry.target);
             if (headerIndex !== -1 && periodHeaders[headerIndex]) {
               visibleHeaders.push(periodHeaders[headerIndex]);
@@ -272,8 +275,6 @@ export function CapacityTable({
         });
 
         if (visibleHeaders.length > 0) {
-          // Sort visible headers by their original index in periodHeaders
-          // to correctly identify first and last truly visible
           visibleHeaders.sort((a, b) => periodHeaders.indexOf(a) - periodHeaders.indexOf(b));
           onVisiblePeriodsChange(visibleHeaders[0], visibleHeaders[visibleHeaders.length - 1]);
         } else {
@@ -282,8 +283,8 @@ export function CapacityTable({
       },
       {
         root: scrollContainerRef.current,
-        rootMargin: "0px", // No margin
-        threshold: 0.5, // At least 50% of the element is visible
+        rootMargin: "0px", 
+        threshold: 0.5, 
       }
     );
 
@@ -298,7 +299,8 @@ export function CapacityTable({
       });
       observer.disconnect();
     };
-  }, [periodHeaders, onVisiblePeriodsChange, scrollContainerRef.current]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodHeaders, onVisiblePeriodsChange]); // scrollContainerRef.current is stable
 
 
   const renderTableItem = (item: CapacityDataRow): React.ReactNode[] => {
@@ -317,12 +319,12 @@ export function CapacityTable({
           >
             <button
               onClick={() => toggleExpand(item.id)}
-              className="py-3 px-4 font-semibold text-foreground hover:no-underline w-full text-left flex items-center justify-between"
+              className="py-3 px-4 font-semibold text-foreground hover:no-underline w-full text-left flex items-center gap-2"
               style={{ paddingLeft: `${item.level * 1.5 + 1}rem` }}
               aria-expanded={isExpanded}
             >
-              {item.name}
               <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+              {item.name}
             </button>
           </TableCell>
         ) : (
@@ -334,10 +336,7 @@ export function CapacityTable({
           </TableCell>
         )}
         {periodHeaders.map((ph, index) => {
-           // Render empty cells for the rest of the header row if it's an expandable item
-           // to ensure proper column alignment for its content rows.
            if (item.children && item.children.length > 0 && index === 0) { 
-             // This cell is covered by the colSpan=1 button cell above
              return null; 
            }
              return (
@@ -363,11 +362,9 @@ export function CapacityTable({
 
   const getCategoryHeader = () => {
     if (data.length === 0) return 'Category / Metric';
-    // Logic to determine header based on current grouping can be more complex if needed
-    // For now, a simpler approach:
     const firstItemType = data[0]?.itemType;
     if (firstItemType === 'BU') return 'BU / LoB / Team / Metric';
-    if (firstItemType === 'LOB') return 'LoB / Team / Metric';
+    if (firstItemType === 'LOB') return 'LoB / Team / Metric'; // Should not happen with current logic where BU is always top
     return 'Category / Metric';
   };
 
@@ -408,3 +405,7 @@ export function CapacityTable({
     </TooltipProvider>
   );
 }
+CapacityTableComponent.displayName = 'CapacityTable';
+export const CapacityTable = React.memo(CapacityTableComponent);
+
+    
