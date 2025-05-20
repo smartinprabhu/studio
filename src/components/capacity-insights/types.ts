@@ -58,8 +58,7 @@ export const ALL_MONTH_HEADERS = Array.from({ length: 12 }, (_, i) => {
   return date.toLocaleString('default', { month: 'long', year: 'numeric' }); // e.g. "January 2024"
 });
 
-export const NUM_PERIODS_DISPLAYED = 4;
-// DYNAMIC_SUM_COLUMN_KEY was removed as per previous request to remove summary column
+export const NUM_PERIODS_DISPLAYED = 8; // Increased from 4 to 8
 export type TimeInterval = "Week" | "Month";
 
 
