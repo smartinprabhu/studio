@@ -82,26 +82,27 @@ export interface BaseAgentMinuteValues { // Agent minute values
 }
 
 // Metrics for a Team per period
+// Note: Most fields are inputs from mock data or will be editable. Calculated fields are marked.
 export interface TeamPeriodicMetrics extends BaseHCValues {
-  aht: number | null; // minutes
-  shrinkagePercentage: number | null; // 0-100
-  occupancyPercentage: number | null; // 0-100
-  backlogPercentage: number | null; // 0-100
-  attritionPercentage: number | null; // 0-100
-  volumeMixPercentage: number | null; // 0-100, team's share of LOB volume/required minutes
+  aht: number | null; // minutes - INPUT / EDITABLE
+  shrinkagePercentage: number | null; // 0-100 - INPUT / EDITABLE
+  occupancyPercentage: number | null; // 0-100 - INPUT / EDITABLE
+  backlogPercentage: number | null; // 0-100 - INPUT / EDITABLE
+  attritionPercentage: number | null; // 0-100 - INPUT / EDITABLE
+  volumeMixPercentage: number | null; // 0-100, team's share of LOB volume/required minutes - INPUT / EDITABLE (with special handling)
   
-  moveIn: number | null;
-  moveOut: number | null;
-  newHireBatch: number | null;
-  newHireProduction: number | null;
+  actualHC: number | null; // INPUT / EDITABLE
+  moveIn: number | null; // INPUT / EDITABLE
+  moveOut: number | null; // INPUT / EDITABLE
+  newHireBatch: number | null; // INPUT / EDITABLE
+  newHireProduction: number | null; // INPUT / EDITABLE
 
-  // For internal calculation and roll-up. These might be calculated in page.tsx.
-  // `_productivity` would be an input for team to calculate its `requiredHC` if not directly provided.
-  // `_teamRequiredAgentMinutes` derived from LOB total * volumeMix.
-  // `_teamActualAgentMinutes` derived from team's actualHC, schedule, productivity.
-  _productivity: number | null; // e.g. contacts per agent-hour or similar work rate metric
-  _calculatedRequiredAgentMinutes?: number | null;
-  _calculatedActualAgentMinutes?: number | null;
+  _productivity: number | null; // e.g. contacts per agent-hour or similar work rate metric - INPUT (maybe editable later)
+  
+  // Calculated fields:
+  _calculatedRequiredAgentMinutes?: number | null; // CALCULATED
+  _calculatedActualAgentMinutes?: number | null; // CALCULATED
+  // requiredHC, overUnderHC are in BaseHCValues, also calculated for teams
 }
 
 // Aggregated metrics for LOB/BU per period (combines agent minutes and HC summaries)
@@ -111,8 +112,7 @@ export interface AggregatedPeriodicMetrics extends BaseAgentMinuteValues, BaseHC
 export interface RawTeamDataEntry {
   teamName: TeamName;
   // Key is period header (e.g., "Wk1: 01/01-01/07")
-  // These are mostly input metrics; HC related metrics will be calculated/aggregated in processing.
-  // `requiredHC` and `overUnderHC` are typically calculated, so not direct inputs here.
+  // These are input metrics. HC related metrics will be calculated/aggregated in processing.
   periodicInputData: Record<string, Omit<TeamPeriodicMetrics, 'requiredHC' | 'overUnderHC' | '_calculatedRequiredAgentMinutes' | '_calculatedActualAgentMinutes'>>;
 }
 
@@ -121,48 +121,60 @@ export interface RawLoBCapacityEntry {
   id: string; // Unique ID for the LOB entry, e.g., "wfs_us_chat"
   bu: BusinessUnitName;
   lob: string;
-  // LOB-level *total base required agent minutes* for each period.
-  // This is the basis for distributing "required agent minutes" to teams based on their volumeMixPercentage.
   lobTotalBaseRequiredMinutes: Record<string, number | null>; // e.g. { "Wk1": 500000 }
   teams: RawTeamDataEntry[];
 }
 
 // Defines the structure for rows in the display table
 export interface CapacityDataRow {
-  id: string;
+  id: string; // For BU: buName, For LOB: lobId (e.g. wfs_us_chat), For Team: lobId_teamName
   name: string; // BU name, LOB name, or Team name
   level: number; // Indentation level
   itemType: 'BU' | 'LOB' | 'Team'; // To help in rendering and data access
-  // For BU/LOB: AggregatedPeriodicMetrics (agent-minutes and HC summaries)
-  // For Team: TeamPeriodicMetrics (detailed metrics for that team)
   periodicData: Record<string, AggregatedPeriodicMetrics | TeamPeriodicMetrics>; // Key is period header or DYNAMIC_SUM_COLUMN_KEY
   children?: CapacityDataRow[];
+  lobId?: string; // Only for itemType 'Team', to help identify its parent LOB
 }
 
+export interface MetricDefinition {
+    key: keyof TeamPeriodicMetrics | keyof AggregatedPeriodicMetrics;
+    label: string;
+    isPercentage?: boolean;
+    isHC?: boolean;
+    isTime?: boolean; /* for AHT in minutes */
+    isEditableForTeam?: boolean; // New flag
+    step?: number; // For number inputs
+}
+
+export type TeamMetricDefinitions = MetricDefinition[];
+export type AggregatedMetricDefinitions = MetricDefinition[];
+
+
 // Definitions for rendering metric rows
-export const TEAM_METRIC_ROW_DEFINITIONS: Array<{ key: keyof TeamPeriodicMetrics; label: string; isPercentage?: boolean; isHC?: boolean; isTime?: boolean /* for AHT in minutes */ }> = [
-  { key: "aht", label: "AHT", isTime: true },
-  { key: "shrinkagePercentage", label: "Shrinkage %", isPercentage: true },
-  { key: "occupancyPercentage", label: "Occupancy %", isPercentage: true },
-  { key: "backlogPercentage", label: "Backlog %", isPercentage: true },
-  { key: "attritionPercentage", label: "Attrition %", isPercentage: true },
-  { key: "volumeMixPercentage", label: "Volume Mix", isPercentage: true },
-  { key: "requiredHC", label: "Require HC", isHC: true },
-  { key: "actualHC", label: "Actual HC", isHC: true },
-  { key: "overUnderHC", label: "Over/Under HC", isHC: true },
-  { key: "moveIn", label: "Move In (+)" },
-  { key: "moveOut", label: "Move Out (-)" },
-  { key: "newHireBatch", label: "New Hire Batch" },
-  { key: "newHireProduction", label: "New Hire Production" },
+export const TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = [
+  { key: "aht", label: "AHT", isTime: true, isEditableForTeam: true, step: 0.1 },
+  { key: "shrinkagePercentage", label: "Shrinkage %", isPercentage: true, isEditableForTeam: true, step: 0.1 },
+  { key: "occupancyPercentage", label: "Occupancy %", isPercentage: true, isEditableForTeam: true, step: 0.1 },
+  { key: "backlogPercentage", label: "Backlog %", isPercentage: true, isEditableForTeam: true, step: 0.1 },
+  { key: "attritionPercentage", label: "Attrition %", isPercentage: true, isEditableForTeam: true, step: 0.1 },
+  { key: "volumeMixPercentage", label: "Volume Mix %", isPercentage: true, isEditableForTeam: true, step: 0.1 }, // Special handling needed
+  { key: "requiredHC", label: "Required HC", isHC: true }, // Calculated
+  { key: "actualHC", label: "Actual HC", isHC: true, isEditableForTeam: true, step: 0.1 },
+  { key: "overUnderHC", label: "Over/Under HC", isHC: true }, // Calculated
+  { key: "moveIn", label: "Move In (+)", isEditableForTeam: true, step: 1 },
+  { key: "moveOut", label: "Move Out (-)", isEditableForTeam: true, step: 1 },
+  { key: "newHireBatch", label: "New Hire Batch", isEditableForTeam: true, step: 1 },
+  { key: "newHireProduction", label: "New Hire Production", isEditableForTeam: true, step: 1 },
+  // { key: "_productivity", label: "Productivity", isEditableForTeam: true }, // Example if productivity becomes directly editable
 ];
 
 // For LOB/BU summary rows
-export const AGGREGATED_METRIC_ROW_DEFINITIONS: Array<{ key: keyof AggregatedPeriodicMetrics; label: string; isPercentage?: boolean; isHC?: boolean }> = [
-  { key: "required", label: "Required" }, // agent-minutes
-  { key: "actual", label: "Actual" },     // agent-minutes
-  { key: "overUnder", label: "Over/Under" }, // agent-minutes
+export const AGGREGATED_METRIC_ROW_DEFINITIONS: AggregatedMetricDefinitions = [
+  { key: "required", label: "Required (Agent Mins)" }, 
+  { key: "actual", label: "Actual (Agent Mins)" },     
+  { key: "overUnder", label: "Over/Under (Agent Mins)" }, 
   { key: "adherence", label: "Adherence (%)", isPercentage: true },
-  { key: "requiredHC", label: "Required HC", isHC: true }, // Aggregated HC
-  { key: "actualHC", label: "Actual HC", isHC: true },     // Aggregated HC
-  { key: "overUnderHC", label: "Over/Under HC", isHC: true }, // Aggregated HC
+  { key: "requiredHC", label: "Required HC", isHC: true }, 
+  { key: "actualHC", label: "Actual HC", isHC: true },    
+  { key: "overUnderHC", label: "Over/Under HC", isHC: true },
 ];

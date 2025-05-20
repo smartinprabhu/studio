@@ -10,20 +10,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowDown, ArrowUp, Minus, ChevronDown } from "lucide-react";
+import { ArrowDown, ArrowUp, Minus, ChevronDown, Edit3 } from "lucide-react";
 import type { 
     CapacityDataRow, 
     TeamPeriodicMetrics, 
     AggregatedPeriodicMetrics,
-    MetricDefinition,
+    MetricDefinition, 
     TeamMetricDefinitions,
-    AggregatedMetricDefinitions
+    AggregatedMetricDefinitions,
+    TeamName
 } from "./types";
 import { DYNAMIC_SUM_COLUMN_KEY } from "./types";
 
@@ -35,27 +37,61 @@ interface CapacityTableProps {
   dynamicSumKey: string;
   teamMetricDefinitions: TeamMetricDefinitions;
   aggregatedMetricDefinitions: AggregatedMetricDefinitions;
+  onTeamMetricChange: (lobId: string, teamName: TeamName, periodHeader: string, metricKey: keyof TeamPeriodicMetrics, newValue: string) => void;
 }
 
 interface MetricCellContentProps {
+  item: CapacityDataRow; 
   metricData: TeamPeriodicMetrics | AggregatedPeriodicMetrics | undefined;
   metricDef: MetricDefinition;
-  itemName: string;
   periodName: string;
+  onTeamMetricChange: CapacityTableProps['onTeamMetricChange'];
+  isSumColumn: boolean;
 }
 
 const MetricCellContent: React.FC<MetricCellContentProps> = ({
+  item,
   metricData,
   metricDef,
-  itemName,
   periodName,
+  onTeamMetricChange,
+  isSumColumn,
 }) => {
   if (!metricData) {
     return <Minus className="h-4 w-4 text-muted-foreground mx-auto" />;
   }
 
-  // Cast metricData to 'any' for dynamic key access, or ensure metricKey is valid for the type.
   const rawValue = (metricData as any)[metricDef.key];
+
+  if (item.itemType === 'Team' && metricDef.isEditableForTeam && !isSumColumn) {
+    const teamName = item.name as TeamName; 
+    const lobId = item.lobId;
+
+    if (!lobId) {
+      
+      return <span className="text-xs text-destructive">Error: Missing LOB ID</span>;
+    }
+
+    return (
+      <Input
+        type="number"
+        value={rawValue === null || rawValue === undefined ? "" : String(rawValue)}
+        onChange={(e) => 
+            onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, e.target.value)
+        }
+        onBlur={(e) => { 
+            const val = parseFloat(e.target.value);
+            if (isNaN(val)) {
+                 onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, ""); 
+            } else {
+                 onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, String(val));
+            }
+        }}
+        className="h-8 w-full max-w-[100px] text-right tabular-nums px-1 py-0.5 text-xs bg-background border-input focus:border-primary focus:ring-1 focus:ring-primary"
+        step={metricDef.step || "any"}
+      />
+    );
+  }
 
 
   if (rawValue === null || rawValue === undefined) {
@@ -65,21 +101,21 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
   let displayValue: React.ReactNode = "";
   let textColor = "text-foreground";
   let icon: React.ReactNode = null;
-  let tooltipText = `${itemName} - ${periodName}\n${metricDef.label}: `;
+  let tooltipText = `${item.name} - ${periodName}\n${metricDef.label}: `;
 
   const numValue = Number(rawValue);
 
   if (metricDef.isPercentage) {
     displayValue = `${numValue.toFixed(1)}%`;
-  } else if (metricDef.isTime) {
+  } else if (metricDef.isTime) { 
     displayValue = `${numValue.toFixed(1)} min`;
   } else if (metricDef.isHC) {
     displayValue = numValue.toFixed(2);
   } else if (typeof numValue === 'number' && !isNaN(numValue)) {
-     // For non-percentage, non-time, non-HC numbers (like required, actual, over/under agent minutes, moveIn, moveOut)
-    displayValue = numValue.toLocaleString(undefined, {maximumFractionDigits: metricDef.key === "overUnder" || metricDef.key === "required" || metricDef.key === "actual" ? 0 : 1});
+    const fractionDigits = (metricDef.key === "overUnder" || metricDef.key === "required" || metricDef.key === "actual") ? 0 : 1;
+    displayValue = numValue.toLocaleString(undefined, {minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits});
   } else {
-    displayValue = String(rawValue); // Fallback for other types
+    displayValue = String(rawValue); 
   }
   
   tooltipText += displayValue;
@@ -87,23 +123,21 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
 
   if (metricDef.key === "overUnder" || metricDef.key === "overUnderHC") {
     if (numValue < 0) {
-      textColor = "text-destructive";
+      textColor = "text-destructive"; 
       icon = <ArrowDown className="h-3 w-3 inline-block ml-1" />;
     } else if (numValue > 0) {
-      textColor = "text-primary";
+      textColor = "text-primary"; 
       icon = <ArrowUp className="h-3 w-3 inline-block ml-1" />;
     }
-    if (metricDef.key === "overUnder" && 'actual' in metricData && 'required' in metricData ) {
-      const md = metricData as AggregatedPeriodicMetrics;
-      tooltipText = `${itemName} - ${periodName}\nOver/Under = Actual - Required\n${md.actual?.toLocaleString()} - ${md.required?.toLocaleString()} = ${numValue.toLocaleString()}`;
-    } else if (metricDef.key === "overUnderHC" && 'actualHC' in metricData && 'requiredHC' in metricData) {
-      const md = metricData as TeamPeriodicMetrics; // or AggregatedPeriodicMetrics if it has HC
-      tooltipText = `${itemName} - ${periodName}\nOver/Under HC = Actual HC - Required HC\n${md.actualHC?.toFixed(2)} - ${md.requiredHC?.toFixed(2)} = ${numValue.toFixed(2)}`;
+     if (metricDef.key === "overUnder" && 'actual' in metricData && 'required' in metricData && typeof metricData.actual === 'number' && typeof metricData.required === 'number') {
+      tooltipText = `${item.name} - ${periodName}\nOver/Under (Mins) = Actual - Required\n${metricData.actual.toLocaleString(undefined, {maximumFractionDigits:0})} - ${metricData.required.toLocaleString(undefined, {maximumFractionDigits:0})} = ${numValue.toLocaleString(undefined, {maximumFractionDigits:0})}`;
+    } else if (metricDef.key === "overUnderHC" && 'actualHC' in metricData && 'requiredHC' in metricData && typeof metricData.actualHC === 'number' && typeof metricData.requiredHC === 'number') {
+      tooltipText = `${item.name} - ${periodName}\nOver/Under HC = Actual HC - Required HC\n${metricData.actualHC.toFixed(2)} - ${metricData.requiredHC.toFixed(2)} = ${numValue.toFixed(2)}`;
     }
-  } else if (metricDef.key === "adherence" && 'actual' in metricData && 'required' in metricData) {
-    const md = metricData as AggregatedPeriodicMetrics;
-    tooltipText = `${itemName} - ${periodName}\nAdherence = (Actual / Required) * 100%\n(${md.actual?.toLocaleString()} / ${md.required?.toLocaleString()}) * 100 = ${numValue.toFixed(1)}%`;
+  } else if (metricDef.key === "adherence" && 'actual' in metricData && 'required' in metricData && typeof metricData.actual === 'number' && typeof metricData.required === 'number') {
+    tooltipText = `${item.name} - ${periodName}\nAdherence = (Actual Mins / Required Mins) * 100%\n(${metricData.actual.toLocaleString(undefined, {maximumFractionDigits:0})} / ${metricData.required.toLocaleString(undefined, {maximumFractionDigits:0})}) * 100 = ${numValue.toFixed(1)}%`;
   }
+
 
   const cellContent = <span className={`flex items-center justify-end ${textColor}`}>{displayValue} {icon}</span>;
 
@@ -113,7 +147,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
         <TooltipTrigger asChild>
           {cellContent}
         </TooltipTrigger>
-        <TooltipContent className="whitespace-pre-wrap text-xs">
+        <TooltipContent className="whitespace-pre-wrap text-xs max-w-xs">
           <p>{tooltipText}</p>
         </TooltipContent>
       </Tooltip>
@@ -123,15 +157,15 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
 };
 
 interface MetricRowProps {
+  item: CapacityDataRow;
   metricDef: MetricDefinition;
-  level: number;
-  periodicData: Record<string, TeamPeriodicMetrics | AggregatedPeriodicMetrics>;
+  level: number; 
   periodHeaders: string[];
-  itemName: string;
+  onTeamMetricChange: CapacityTableProps['onTeamMetricChange'];
   isSumColumn: (periodHeader: string) => boolean;
 }
 
-const MetricRow: React.FC<MetricRowProps> = ({ metricDef, level, periodicData, periodHeaders, itemName, isSumColumn }) => {
+const MetricRow: React.FC<MetricRowProps> = ({ item, metricDef, level, periodHeaders, onTeamMetricChange, isSumColumn }) => {
   return (
     <TableRow className="hover:bg-card-foreground/5">
       <TableCell
@@ -139,9 +173,10 @@ const MetricRow: React.FC<MetricRowProps> = ({ metricDef, level, periodicData, p
         style={{ paddingLeft: `${level * 1.5 + 1}rem` }}
       >
         {metricDef.label}
+        {item.itemType === 'Team' && metricDef.isEditableForTeam && <Edit3 className="h-3 w-3 inline-block ml-2 text-muted-foreground opacity-50" />}
       </TableCell>
       {periodHeaders.map((periodHeader) => {
-        const metricForPeriod = periodicData[periodHeader];
+        const metricForPeriod = item.periodicData[periodHeader];
         let cellTextColor = "text-foreground";
         if ((metricDef.key === "overUnder" || metricDef.key === "overUnderHC") && metricForPeriod && (metricForPeriod as any)[metricDef.key] !== null && (metricForPeriod as any)[metricDef.key] !== undefined) {
             const value = Number((metricForPeriod as any)[metricDef.key]);
@@ -151,14 +186,16 @@ const MetricRow: React.FC<MetricRowProps> = ({ metricDef, level, periodicData, p
         
         return (
           <TableCell 
-            key={`${itemName}-${metricDef.key}-${periodHeader}`} 
-            className={`text-right tabular-nums ${cellTextColor} ${isSumColumn(periodHeader) ? 'font-semibold bg-muted/30' : ''}`}
+            key={`${item.id}-${metricDef.key}-${periodHeader}`} 
+            className={`text-right tabular-nums ${cellTextColor} ${isSumColumn(periodHeader) ? 'font-semibold bg-muted/30' : ''} py-2 px-2`}
           >
             <MetricCellContent 
+                item={item}
                 metricData={metricForPeriod} 
                 metricDef={metricDef} 
-                itemName={itemName} 
                 periodName={periodHeader} 
+                onTeamMetricChange={onTeamMetricChange}
+                isSumColumn={isSumColumn(periodHeader)}
             />
           </TableCell>
         );
@@ -172,7 +209,8 @@ const renderCapacityItemContent = (
   periodHeaders: string[],
   isSumColumn: (ph: string) => boolean,
   teamMetricDefs: TeamMetricDefinitions,
-  aggregatedMetricDefs: AggregatedMetricDefinitions
+  aggregatedMetricDefs: AggregatedMetricDefinitions,
+  onTeamMetricChange: CapacityTableProps['onTeamMetricChange']
 ): React.ReactNode[] => {
   const rows: React.ReactNode[] = [];
   
@@ -180,7 +218,7 @@ const renderCapacityItemContent = (
 
   if (item.itemType === 'Team') {
     metricDefinitionsToUse = teamMetricDefs;
-  } else { // BU or LOB
+  } else { 
     metricDefinitionsToUse = aggregatedMetricDefs;
   }
 
@@ -188,11 +226,11 @@ const renderCapacityItemContent = (
     rows.push(
       <MetricRow
         key={`${item.id}-${metricDef.key}`}
+        item={item}
         metricDef={metricDef}
         level={item.level + 1} 
-        periodicData={item.periodicData}
         periodHeaders={periodHeaders}
-        itemName={item.name}
+        onTeamMetricChange={onTeamMetricChange}
         isSumColumn={isSumColumn}
       />
     );
@@ -208,7 +246,8 @@ export function CapacityTable({
     toggleExpand, 
     dynamicSumKey,
     teamMetricDefinitions,
-    aggregatedMetricDefinitions 
+    aggregatedMetricDefinitions,
+    onTeamMetricChange
 }: CapacityTableProps) {
   
   const isSumColumn = (periodHeader: string) => periodHeader === dynamicSumKey || periodHeader.includes("Total");
@@ -220,7 +259,7 @@ export function CapacityTable({
     rows.push(
       <TableRow 
         key={`${item.id}-name`} 
-        className={`${(item.children && item.children.length > 0) ? 'bg-card-foreground/5 hover:bg-card-foreground/10' : 'hover:bg-card-foreground/5'}`}
+        className={`${(item.children && item.children.length > 0) ? 'bg-card-foreground/5 hover:bg-card-foreground/10' : 'hover:bg-card-foreground/5'} `}
       >
         {(item.children && item.children.length > 0) ? (
           <TableCell 
@@ -239,7 +278,7 @@ export function CapacityTable({
           </TableCell>
         ) : (
           <TableCell 
-            className="sticky left-0 z-10 bg-card font-semibold text-foreground whitespace-nowrap"
+            className="sticky left-0 z-10 bg-card font-semibold text-foreground whitespace-nowrap py-3 px-4"
             style={{ paddingLeft: `${item.level * 1.5 + 1}rem` }}
           >
             {item.name}
@@ -258,7 +297,7 @@ export function CapacityTable({
     );
 
     if (isExpanded || !item.children || item.children.length === 0) {
-        const itemMetricRows = renderCapacityItemContent(item, periodHeaders, isSumColumn, teamMetricDefinitions, aggregatedMetricDefinitions);
+        const itemMetricRows = renderCapacityItemContent(item, periodHeaders, isSumColumn, teamMetricDefinitions, aggregatedMetricDefinitions, onTeamMetricChange);
         rows.push(...itemMetricRows);
     }
 
@@ -271,19 +310,29 @@ export function CapacityTable({
     return rows;
   };
 
+  const getCategoryHeader = () => {
+    if (data.length === 0) return 'Category / Metric';
+    const firstTopLevelItem = data[0];
+    if (firstTopLevelItem.level === 0) {
+      if (firstTopLevelItem.itemType === 'BU') return 'BU / LoB / Team / Metric';
+      if (firstTopLevelItem.itemType === 'LOB') return 'LoB / Team / Metric';
+    }
+    return 'Category / Metric';
+  };
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="overflow-x-auto relative border border-border rounded-md shadow-md">
         <Table className="min-w-full">
           <TableHeader className="sticky top-0 z-40 bg-card"> 
             <TableRow>
-              <TableHead className="sticky left-0 z-50 bg-card min-w-[280px] whitespace-nowrap shadow-sm">
-                {data.length > 0 && data[0].itemType === 'LOB' && data[0].level === 0 ? 'LoB / Metric' : 'Category / Metric'}
+              <TableHead className="sticky left-0 z-50 bg-card min-w-[320px] whitespace-nowrap shadow-sm px-4">
+                {getCategoryHeader()}
               </TableHead>
               {periodHeaders.map((period) => (
                 <TableHead 
                   key={period} 
-                  className={`text-right min-w-[150px] whitespace-nowrap ${isSumColumn(period) ? 'font-bold bg-muted/50 sticky right-0 z-30 shadow-sm' : ''}`}
+                  className={`text-right min-w-[120px] whitespace-nowrap px-2 ${isSumColumn(period) ? 'font-bold bg-muted/50 sticky right-0 z-30 shadow-sm' : ''}`}
                   style={isSumColumn(period) ? { right: 0 } : {}} 
                 >
                   {period.replace(DYNAMIC_SUM_COLUMN_KEY, "Summary")}
@@ -307,5 +356,3 @@ export function CapacityTable({
     </TooltipProvider>
   );
 }
-
-    
