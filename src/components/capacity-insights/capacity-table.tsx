@@ -27,6 +27,7 @@ import type {
     AggregatedMetricDefinitions,
     TeamName
 } from "./types";
+import { cn } from "@/lib/utils";
 
 interface CapacityTableProps {
   data: CapacityDataRow[];
@@ -78,10 +79,10 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
         onBlur={(e) => {
             const val = parseFloat(e.target.value);
             if (isNaN(val) && e.target.value !== "" && e.target.value !== "-") {
-                 onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, ""); // Clear if invalid and not empty or just a minus
+                 onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, ""); 
             } else if (!isNaN(val)) {
                  onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, String(val));
-            } else if (e.target.value === "" && rawValue !== null && rawValue !== undefined) { // If field cleared and had a value
+            } else if (e.target.value === "" && rawValue !== null && rawValue !== undefined) { 
                  onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, "");
             }
         }}
@@ -107,10 +108,10 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
   } else if (metricDef.isTime) {
     displayValue = `${numValue.toFixed(1)} min`;
   } else if (metricDef.isHC || ['moveIn', 'moveOut', 'newHireBatch', 'newHireProduction'].includes(metricDef.key as string) ) {
-    const digits = (['moveIn', 'moveOut', 'newHireBatch', 'newHireProduction'].includes(metricDef.key as string)) ? 0 : 2; // Whole numbers for move/hire, 2 decimals for HC
+    const digits = (['moveIn', 'moveOut', 'newHireBatch', 'newHireProduction'].includes(metricDef.key as string)) ? 0 : 2; 
     displayValue = numValue.toFixed(digits);
   } else if (typeof numValue === 'number' && !isNaN(numValue)) {
-    const fractionDigits = (metricDef.key === "overUnder" || metricDef.key === "required" || metricDef.key === "actual") ? 0 : 1;
+    const fractionDigits = (metricDef.key === "overUnderHC" || metricDef.key === "requiredHC" || metricDef.key === "actualHC") ? 2 : 1;
     displayValue = numValue.toLocaleString(undefined, {minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits});
   } else {
     displayValue = String(rawValue);
@@ -118,19 +119,19 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
 
   tooltipText += displayValue;
 
-  if (metricDef.key === "overUnderHC") { // Adjusted for generic HC over/under
+  if (metricDef.key === "overUnderHC") { 
     if (numValue < 0) {
       textColor = "text-destructive";
       icon = <ArrowDown className="h-3 w-3 inline-block ml-1" />;
     } else if (numValue > 0) {
-      textColor = "text-primary";
+      textColor = "text-primary"; // Using primary for surplus as per previous request
       icon = <ArrowUp className="h-3 w-3 inline-block ml-1" />;
     }
-    if (metricData && 'actualHC' in metricData && 'requiredHC' in metricData && typeof (metricData as TeamPeriodicMetrics | AggregatedPeriodicMetrics).actualHC === 'number' && typeof (metricData as TeamPeriodicMetrics | AggregatedPeriodicMetrics).requiredHC === 'number') {
-      tooltipText = `${item.name} - ${periodName}\nOver/Under HC = Actual HC - Required HC\n${(metricData as TeamPeriodicMetrics | AggregatedPeriodicMetrics).actualHC!.toFixed(2)} - ${(metricData as TeamPeriodicMetrics | AggregatedPeriodicMetrics).requiredHC!.toFixed(2)} = ${numValue.toFixed(2)}`;
+    if (metricData && 'actualHC' in metricData && 'requiredHC' in metricData && typeof (metricData as AggregatedPeriodicMetrics | TeamPeriodicMetrics).actualHC === 'number' && typeof (metricData as AggregatedPeriodicMetrics | TeamPeriodicMetrics).requiredHC === 'number') {
+      tooltipText = `${item.name} - ${periodName}\nOver/Under HC = Actual HC - Required HC\n${(metricData as AggregatedPeriodicMetrics | TeamPeriodicMetrics).actualHC!.toFixed(2)} - ${(metricData as AggregatedPeriodicMetrics | TeamPeriodicMetrics).requiredHC!.toFixed(2)} = ${numValue.toFixed(2)}`;
     }
   }
-
+  
   const cellContent = <span className={`flex items-center justify-end ${textColor}`}>{displayValue} {icon}</span>;
 
   if (tooltipText && (rawValue !== null && rawValue !== undefined)) {
@@ -159,7 +160,7 @@ interface MetricRowProps {
 
 const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level, periodHeaders, onTeamMetricChange }) => {
   return (
-    <TableRow className="hover:bg-card-foreground/5">
+    <TableRow className="hover:bg-muted/50">
       <TableCell
         className="sticky left-0 z-20 bg-card font-normal text-foreground whitespace-nowrap py-2"
         style={{ paddingLeft: `${level * 1.5 + 0.5}rem`, paddingRight: '1rem' }} 
@@ -208,6 +209,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
     aggregatedMetricDefinitions,
     onTeamMetricChange,
 }) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const renderCapacityItemContent = useCallback((
     item: CapacityDataRow,
@@ -217,7 +219,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 
     if (item.itemType === 'Team') {
       metricDefinitionsToUse = teamMetricDefinitions;
-    } else { // BU or LOB
+    } else { 
       metricDefinitionsToUse = aggregatedMetricDefinitions;
     }
 
@@ -240,15 +242,35 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
   const renderTableItem = useCallback((item: CapacityDataRow): React.ReactNode[] => {
     const rows: React.ReactNode[] = [];
     const isExpanded = expandedItems[item.id] || false;
-    const isExpandable = (item.itemType !== 'Team' && item.children && item.children.length > 0) || item.itemType === 'Team';
+    const isExpandable = (item.children && item.children.length > 0) || item.itemType === 'Team';
+
+    let rowSpecificBgClass = '';
+    let buttonTextClass = 'text-foreground';
+
+    if (item.itemType === 'BU') {
+      rowSpecificBgClass = 'bg-secondary';
+      buttonTextClass = 'text-secondary-foreground';
+    } else if (item.itemType === 'LOB') {
+      rowSpecificBgClass = 'bg-muted';
+      buttonTextClass = 'text-muted-foreground';
+    } else if (item.itemType === 'Team') { // For the Team header row itself
+      rowSpecificBgClass = 'bg-muted/50';
+      // buttonTextClass remains text-foreground or could be muted-foreground if preferred
+    }
+    
+    const hoverClass = item.itemType !== 'BU' ? 'hover:bg-muted/70' : 'hover:bg-secondary/80';
+
 
     rows.push(
       <TableRow
         key={`${item.id}-name`}
-        className={`${isExpandable ? 'bg-card-foreground/5 hover:bg-card-foreground/10' : 'hover:bg-card-foreground/5'} `}
+        className={cn(rowSpecificBgClass, hoverClass)}
       >
         <TableCell
-          className="p-0 sticky left-0 bg-card whitespace-nowrap"
+          className={cn(
+            "p-0 sticky left-0 whitespace-nowrap",
+            rowSpecificBgClass || 'bg-card' // Match row bg or default card bg for sticky cell
+          )}
           style={{ 
             zIndex: item.itemType === 'Team' ? 25 : (item.itemType === 'LOB' ? 30 : 35),
             paddingLeft: `${item.level * 1.5 + (isExpandable ? 0 : 0.5)}rem` 
@@ -257,7 +279,10 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
           <button
             onClick={isExpandable ? () => toggleExpand(item.id) : undefined}
             disabled={!isExpandable}
-            className="py-3 px-2 font-semibold text-foreground hover:no-underline w-full text-left flex items-center gap-2"
+            className={cn(
+                "py-3 px-2 font-semibold hover:no-underline w-full text-left flex items-center gap-2",
+                buttonTextClass
+            )}
             aria-expanded={isExpandable ? isExpanded : undefined}
           >
             {isExpandable && (
@@ -269,32 +294,31 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
         </TableCell>
         {/* Placeholder cells for period headers in the name row */}
         {periodHeaders.map((ph) => (
-             <TableCell key={`${item.id}-${ph}-nameplaceholder`} className={`${isExpandable ? 'py-3' : ''}`}></TableCell>
+             <TableCell 
+                key={`${item.id}-${ph}-nameplaceholder`} 
+                className={cn(
+                    rowSpecificBgClass, // Also apply the bg to these cells for consistency
+                    isExpandable ? 'py-3' : '' // Maintain py-3 if it was an expandable header row
+                )}></TableCell>
         ))}
       </TableRow>
     );
 
-    // If the item is expanded, render its content (metrics or children)
     if (isExpanded) {
         if (item.itemType === 'Team') {
-            // For Teams, if expanded, show their metrics
             const teamMetricRows = renderCapacityItemContent(item);
             rows.push(...teamMetricRows);
         } else if (item.children && item.children.length > 0) {
-            // For BU/LOB, if expanded, first show their aggregated metrics
             const aggregatedMetricRows = renderCapacityItemContent(item);
             rows.push(...aggregatedMetricRows);
-            // Then render their children (LOBs or Teams)
             item.children.forEach(child => {
                 rows.push(...renderTableItem(child));
             });
         } else { 
-            // BU/LOB with no children, but still show its metrics if it was marked 'expandable' and is expanded
             const itemMetricRows = renderCapacityItemContent(item);
             rows.push(...itemMetricRows);
         }
     } else if (!isExpandable && item.itemType !== 'Team') { 
-        // BU/LOB with no children (or not expandable for other reasons) should always show its metrics
         const itemMetricRows = renderCapacityItemContent(item);
         rows.push(...itemMetricRows);
     }
@@ -303,12 +327,16 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 
   const getCategoryHeader = () => {
     if (data.length === 0) return 'Category / Metric';
-    return 'BU / LoB / Team / Metric';
+    const firstItemType = data[0]?.itemType;
+    if (firstItemType === 'BU') return 'BU / LoB / Team / Metric';
+    if (firstItemType === 'LOB') return 'LoB / Team / Metric';
+    if (firstItemType === 'Team') return 'Team / Metric';
+    return 'Category / Metric';
   };
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="overflow-x-auto relative border border-border rounded-md shadow-md">
+      <div ref={scrollContainerRef} className="overflow-x-auto relative border border-border rounded-md shadow-md">
         <Table className="min-w-full">
           <TableHeader className="sticky top-0 z-40 bg-card">
             <TableRow>
@@ -362,5 +390,3 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 };
 CapacityTableComponent.displayName = 'CapacityTableComponent';
 export const CapacityTable = React.memo(CapacityTableComponent);
-
-    
