@@ -141,11 +141,19 @@ const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): num
 
 export default function CapacityInsightsPage() {
   const [rawCapacityDataSource, setRawCapacityDataSource] = useState<RawLoBCapacityEntry[]>(() => JSON.parse(JSON.stringify(initialMockRawCapacityData)));
-  const [filterOptions, setFilterOptions] = useState(mockFilterOptions);
+  const [filterOptions, setFilterOptions] = useState(() => {
+    const initialBu = ALL_BUSINESS_UNITS[0] as BusinessUnitName; // Default to WFS
+    const initialLobsForBu = BUSINESS_UNIT_CONFIG[initialBu].lonsOfBusiness;
+    return {
+      ...mockFilterOptions,
+      businessUnits: [...ALL_BUSINESS_UNITS],
+      linesOfBusiness: [...initialLobsForBu],
+    };
+  });
   const [displayableCapacityData, setDisplayableCapacityData] = useState<CapacityDataRow[]>([]);
   
   const [selectedBusinessUnit, setSelectedBusinessUnit] = useState<BusinessUnitName>(ALL_BUSINESS_UNITS[0]); // Default to WFS
-  const [selectedLineOfBusiness, setSelectedLineOfBusiness] = useState<string[]>([]);
+  const [selectedLineOfBusiness, setSelectedLineOfBusiness] = useState<string[]>(() => BUSINESS_UNIT_CONFIG[ALL_BUSINESS_UNITS[0]].lonsOfBusiness);
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
   
   const [currentPeriodIndex, setCurrentPeriodIndex] = useState<number>(0); 
@@ -289,7 +297,7 @@ export default function CapacityInsightsPage() {
       const firstDateMatch = firstVisibleHeader.match(/:\s*(\d{2}\/\d{2})/);
       const firstYearMatch = firstVisibleHeader.match(/\((\d{4})\)/);
       const firstDateStr = firstDateMatch ? firstDateMatch[1] : '';
-      const firstYearStr = firstYearMatch ? firstYearMatch[1] : '';
+      const firstYearStr = firstYearMatch ? firstYearStr[1] : '';
        if (firstDateStr && firstYearStr) {
          setDynamicDateDisplay(`${firstDateStr} (${firstYearStr})`);
        } else {
@@ -306,9 +314,9 @@ export default function CapacityInsightsPage() {
     const newLobsForBu = BUSINESS_UNIT_CONFIG[bu].lonsOfBusiness;
     setSelectedLineOfBusiness([...newLobsForBu]); // Select all LOBs by default for the new BU
     setFilterOptions(prev => {
-        const currentLobs = ["All", ...newLobsForBu];
-        if (JSON.stringify(prev.linesOfBusiness) !== JSON.stringify(currentLobs)) {
-            return { ...prev, linesOfBusiness: currentLobs };
+        const currentLobsForFilter = [...newLobsForBu];
+        if (JSON.stringify(prev.linesOfBusiness) !== JSON.stringify(currentLobsForFilter)) {
+            return { ...prev, linesOfBusiness: currentLobsForFilter };
         }
         return prev;
     });
@@ -321,18 +329,35 @@ export default function CapacityInsightsPage() {
 
   useEffect(() => {
     // Initialize LOB filters when component mounts or selectedBusinessUnit is first set
-    const initialLobsForBu = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
-    setSelectedLineOfBusiness([...initialLobsForBu]);
-    setFilterOptions(prev => {
-        const currentLobs = [...initialLobsForBu]; // No "All" here for the actual list
-         // The DropdownMenu component will handle the "All X LOBs selected" display logic.
-        return {
-          ...prev,
-          businessUnits: [...ALL_BUSINESS_UNITS], // Ensure this is just the names
-          linesOfBusiness: currentLobs,
-        };
+    // This effect ensures filterOptions.linesOfBusiness and selectedLineOfBusiness are in sync
+    // with the current selectedBusinessUnit.
+    const newLobsForBu = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
+
+    setSelectedLineOfBusiness(prevSelectedLOBs => {
+      const sortedPrev = [...prevSelectedLOBs].sort().join(',');
+      const sortedNew = [...newLobsForBu].sort().join(',');
+      if (sortedPrev !== sortedNew) {
+        return [...newLobsForBu];
+      }
+      return prevSelectedLOBs;
     });
-  }, [selectedBusinessUnit]); // Rerun when selectedBusinessUnit changes to set defaults
+
+    setFilterOptions(prevFilterOptions => {
+      const sortedPrevLOBs = [...prevFilterOptions.linesOfBusiness].sort().join(',');
+      const sortedNewLOBs = [...newLobsForBu].sort().join(',');
+      const sortedPrevBUs = [...prevFilterOptions.businessUnits].sort().join(',');
+      const sortedAllBUs = [...ALL_BUSINESS_UNITS].sort().join(',');
+
+      if (sortedPrevLOBs !== sortedNewLOBs || sortedPrevBUs !== sortedAllBUs) {
+        return {
+          ...prevFilterOptions,
+          businessUnits: [...ALL_BUSINESS_UNITS], 
+          linesOfBusiness: [...newLobsForBu],
+        };
+      }
+      return prevFilterOptions;
+    });
+  }, [selectedBusinessUnit]); 
   
   
   const processDataForTable = useCallback(() => {
@@ -343,30 +368,26 @@ export default function CapacityInsightsPage() {
 
     let relevantRawLobEntries = rawCapacityDataSource.filter(d => d.bu === selectedBusinessUnit);
     
-    // Filter by selected LOBs if not all are implicitly selected
     const allLobsForSelectedBu = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
     if (selectedLineOfBusiness.length !== allLobsForSelectedBu.length || !allLobsForSelectedBu.every(lob => selectedLineOfBusiness.includes(lob))) {
         relevantRawLobEntries = relevantRawLobEntries.filter(d => selectedLineOfBusiness.includes(d.lob));
     }
 
-
     const newDisplayData: CapacityDataRow[] = [];
-    const newExpandedItemsSeed: Record<string, boolean> = {}; 
-
+    
     const buName = selectedBusinessUnit;
-    const buRawLobEntries = relevantRawLobEntries; // Already filtered by selected BU
-    if (buRawLobEntries.length === 0 && selectedLineOfBusiness.length === 0) { // If no LOBs selected and BU has no matching entries
+    const buRawLobEntries = relevantRawLobEntries; 
+
+    if (buRawLobEntries.length === 0 && selectedLineOfBusiness.length === 0) { 
         setDisplayableCapacityData([]);
-        setExpandedItems({});
+        // Do not set expandedItems here to avoid loops
         return;
     }
 
-
     const childrenLobsDataRows: CapacityDataRow[] = [];
-    // Iterate over LOBs defined for the selected BU, but only process those in selectedLineOfBusiness
     BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness.forEach(lobName => {
         if (!selectedLineOfBusiness.includes(lobName)) {
-            return; // Skip LOB if not in the multi-selected list
+            return; 
         }
 
         const lobRawEntry = buRawLobEntries.find(entry => entry.lob === lobName);
@@ -429,7 +450,6 @@ export default function CapacityInsightsPage() {
           periodicData: lobPeriodicData,
           children: childrenTeamsDataRows,
         });
-        newExpandedItemsSeed[lobRawEntry.id] = expandedItems[lobRawEntry.id] !== undefined ? expandedItems[lobRawEntry.id] : true; 
     }); 
 
     if (childrenLobsDataRows.length > 0 || selectedLineOfBusiness.length > 0) {
@@ -468,26 +488,17 @@ export default function CapacityInsightsPage() {
         periodicData: buPeriodicData,
         children: childrenLobsDataRows,
       });
-      newExpandedItemsSeed[buName] = expandedItems[buName] !== undefined ? expandedItems[buName] : true; 
     }
     
     setDisplayableCapacityData(newDisplayData);
-    setExpandedItems(prev => {
-        const updatedExpanded = {...prev};
-        Object.keys(newExpandedItemsSeed).forEach(key => {
-            if (updatedExpanded[key] === undefined) { // Only set if not previously set by user
-                updatedExpanded[key] = newExpandedItemsSeed[key];
-            }
-        });
-        return updatedExpanded;
-    });
+    // Removed setExpandedItems from here to prevent loops
   }, [
       selectedBusinessUnit, 
       selectedLineOfBusiness, 
       selectedTimeInterval, 
       currentPeriodIndex,
       rawCapacityDataSource,
-      expandedItems // Add expandedItems here to preserve state on re-renders not caused by explicit toggle
+      expandedItems 
     ]);
 
 
@@ -507,7 +518,6 @@ export default function CapacityInsightsPage() {
       if (selectedTimeInterval === "Week") {
         const firstDateMatch = firstPeriodFull.match(/:\s*(\d{2}\/\d{2})/);
         const firstYearMatch = firstPeriodFull.match(/\((\d{4})\)/);
-        const lastDateMatch = lastPeriodFull.match(/-(\d{2}\/\d{2})/); // Ensure this matches the end date correctly
         const lastDateFullMatch = lastPeriodFull.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
 
 
@@ -517,8 +527,8 @@ export default function CapacityInsightsPage() {
         let lastYearStr = '';
 
         if (lastDateFullMatch) {
-            lastDateStr = lastDateFullMatch[2]; // The second capture group is the end date MM/DD
-            lastYearStr = lastDateFullMatch[3]; // The third capture group is the year
+            lastDateStr = lastDateFullMatch[2]; 
+            lastYearStr = lastDateFullMatch[3]; 
         }
 
 
@@ -528,7 +538,7 @@ export default function CapacityInsightsPage() {
           } else {
             setCurrentDateDisplay(`${firstDateStr}/${firstYearStr} - ${lastDateStr}/${lastYearStr}`);
           }
-        } else if (firstDateStr && firstYearStr) { // Only one week in block
+        } else if (firstDateStr && firstYearStr) { 
            setCurrentDateDisplay(`${firstDateStr} (${firstYearStr})`);
         } else {
            setCurrentDateDisplay("N/A");
@@ -539,7 +549,7 @@ export default function CapacityInsightsPage() {
     } else {
       setCurrentDateDisplay("N/A");
     }
-  }, [selectedTimeInterval, currentPeriodIndex, displayedPeriodHeaders]); // displayedPeriodHeaders might be redundant if others cover it
+  }, [selectedTimeInterval, currentPeriodIndex, displayedPeriodHeaders]); 
 
   const handleNavigateTime = (direction: "prev" | "next") => {
     const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
@@ -561,7 +571,7 @@ export default function CapacityInsightsPage() {
   
   useEffect(() => {
     setCurrentPeriodIndex(0); 
-    setDynamicDateDisplay(null); // Reset dynamic display on interval change
+    setDynamicDateDisplay(null); 
   }, [selectedTimeInterval]);
 
   return (
