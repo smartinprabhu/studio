@@ -1,9 +1,8 @@
-
 import type { FilterOptions, RawLoBCapacityEntry, BusinessUnitName, TeamName, RawTeamDataEntry, TeamPeriodicMetrics } from "./types";
 import { ALL_BUSINESS_UNITS, BUSINESS_UNIT_CONFIG, ALL_WEEKS_HEADERS, ALL_TEAM_NAMES } from "./types";
 
 // Use a consistent set of periods for mock data generation
-const MOCK_DATA_PERIODS = ALL_WEEKS_HEADERS.slice(0, 20); // Generate data for first 20 weeks
+const MOCK_DATA_PERIODS = ALL_WEEKS_HEADERS; // Generate data for all defined weeks (now 104)
 
 // Helper to generate team-specific periodic input data
 const generateTeamPeriodicInputData = (periods: string[]): Record<string, Omit<TeamPeriodicMetrics, 'requiredHC' | 'overUnderHC' | '_calculatedRequiredAgentMinutes' | '_calculatedActualAgentMinutes'>> => {
@@ -15,7 +14,7 @@ const generateTeamPeriodicInputData = (periods: string[]): Record<string, Omit<T
       occupancyPercentage: Math.floor(Math.random() * 20) + 70, // 70-89 %
       backlogPercentage: Math.floor(Math.random() * 10), // 0-9 %
       attritionPercentage: parseFloat((Math.random() * 2).toFixed(1)), // 0-2.0 %
-      volumeMixPercentage: Math.floor(Math.random() * 30) + 10, // 10-39 % (will need normalization later)
+      volumeMixPercentage: 33.3, // Initial even distribution, will be normalized during interaction
       actualHC: Math.floor(Math.random() * 50) + 10, // 10-59 HC
       moveIn: Math.floor(Math.random() * 5), // 0-4
       moveOut: Math.floor(Math.random() * 3), // 0-2
@@ -43,26 +42,16 @@ export const mockRawCapacityData: RawLoBCapacityEntry[] = [];
 ALL_BUSINESS_UNITS.forEach(bu => {
   BUSINESS_UNIT_CONFIG[bu].lonsOfBusiness.forEach(lob => {
     const teamsForLob: RawTeamDataEntry[] = [];
-    // Ensure sum of volumeMixPercentage across teams is somewhat reasonable, though not strictly 100% here for mock simplicity.
-    // In a real scenario, this would be normalized or validated.
-    let remainingVolumeMix = 100;
     
+    // Assign initial volume mix, ensuring sum is close to 100 for mock purposes
+    const initialMixes = [34, 33, 33]; // For 3 teams
+
     ALL_TEAM_NAMES.forEach((teamName, index) => {
-      // For simplicity, create all team types for each LOB. In reality, this might vary.
       const teamPeriodicData = generateTeamPeriodicInputData(MOCK_DATA_PERIODS);
-      
-      // Adjust volume mix for mock data to simulate distribution
-      if (index < ALL_TEAM_NAMES.length -1) {
-        const currentTeamMix = Math.floor(Math.random() * (remainingVolumeMix / 2)) + 10;
-        Object.keys(teamPeriodicData).forEach(period => {
-            teamPeriodicData[period].volumeMixPercentage = Math.max(10, Math.min(50, currentTeamMix)); // Clamp between 10-50 for this mock
-        });
-        remainingVolumeMix -= (teamPeriodicData[MOCK_DATA_PERIODS[0]]?.volumeMixPercentage || 25);
-      } else {
-         Object.keys(teamPeriodicData).forEach(period => {
-            teamPeriodicData[period].volumeMixPercentage = Math.max(10, Math.min(50, remainingVolumeMix));
-        });
-      }
+      // Set a slightly varied initial volume mix for each team for each period
+      Object.keys(teamPeriodicData).forEach(period => {
+          teamPeriodicData[period].volumeMixPercentage = initialMixes[index] || (100 / ALL_TEAM_NAMES.length);
+      });
 
       teamsForLob.push({
         teamName: teamName,

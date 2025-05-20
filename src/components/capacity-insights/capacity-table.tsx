@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import {
   Table,
   TableBody,
@@ -36,6 +36,7 @@ interface CapacityTableProps {
   teamMetricDefinitions: TeamMetricDefinitions;
   aggregatedMetricDefinitions: AggregatedMetricDefinitions;
   onTeamMetricChange: (lobId: string, teamName: TeamName, periodHeader: string, metricKey: keyof TeamPeriodicMetrics, newValue: string) => void;
+  onVisiblePeriodsChange: (firstVisible: string | null, lastVisible: string | null) => void;
 }
 
 interface MetricCellContentProps {
@@ -77,9 +78,9 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
         }
         onBlur={(e) => { 
             const val = parseFloat(e.target.value);
-            if (isNaN(val)) {
+            if (isNaN(val) && e.target.value !== "" && e.target.value !== "-") {
                  onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, ""); 
-            } else {
+            } else if (!isNaN(val)) {
                  onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, String(val));
             }
         }}
@@ -130,8 +131,10 @@ const MetricCellContent: React.FC<MetricCellContentProps> = ({
     } else if (metricDef.key === "overUnderHC" && 'actualHC' in metricData && 'requiredHC' in metricData && typeof metricData.actualHC === 'number' && typeof metricData.requiredHC === 'number') {
       tooltipText = `${item.name} - ${periodName}\nOver/Under HC = Actual HC - Required HC\n${metricData.actualHC.toFixed(2)} - ${metricData.requiredHC.toFixed(2)} = ${numValue.toFixed(2)}`;
     }
-  } else if (metricDef.key === "adherence" && 'actual' in metricData && 'required' in metricData && typeof metricData.actual === 'number' && typeof metricData.required === 'number') {
+  } else if (metricDef.key === "adherence" && 'actual' in metricData && 'required' in metricData && typeof metricData.actual === 'number' && typeof metricData.required === 'number' && metricData.required !== 0) {
     tooltipText = `${item.name} - ${periodName}\nAdherence = (Actual Mins / Required Mins) * 100%\n(${metricData.actual.toLocaleString(undefined, {maximumFractionDigits:0})} / ${metricData.required.toLocaleString(undefined, {maximumFractionDigits:0})}) * 100 = ${numValue.toFixed(1)}%`;
+  } else if (metricDef.key === "adherence" && metricData.required === 0) {
+     tooltipText = `${item.name} - ${periodName}\nAdherence: N/A (Required Mins is 0)`;
   }
 
 
@@ -164,7 +167,7 @@ const MetricRow: React.FC<MetricRowProps> = ({ item, metricDef, level, periodHea
   return (
     <TableRow className="hover:bg-card-foreground/5">
       <TableCell
-        className="sticky left-0 z-20 bg-card font-normal text-foreground whitespace-nowrap"
+        className="sticky left-0 z-20 bg-card font-normal text-foreground whitespace-nowrap py-2 px-4"
         style={{ paddingLeft: `${level * 1.5 + 1}rem` }}
       >
         {metricDef.label}
@@ -238,9 +241,66 @@ export function CapacityTable({
     toggleExpand, 
     teamMetricDefinitions,
     aggregatedMetricDefinitions,
-    onTeamMetricChange
+    onTeamMetricChange,
+    onVisiblePeriodsChange,
 }: CapacityTableProps) {
   
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const weekHeaderRefs = useRef<(HTMLTableCellElement | null)[]>([]);
+
+  useEffect(() => {
+    weekHeaderRefs.current = weekHeaderRefs.current.slice(0, periodHeaders.length);
+  }, [periodHeaders]);
+
+  useEffect(() => {
+    if (!scrollContainerRef.current || typeof IntersectionObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleHeaders: string[] = [];
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            // Find the header string from periodHeaders based on the target element
+            // This requires knowing the index or having a data attribute on the element
+            const headerIndex = weekHeaderRefs.current.findIndex(ref => ref === entry.target);
+            if (headerIndex !== -1 && periodHeaders[headerIndex]) {
+              visibleHeaders.push(periodHeaders[headerIndex]);
+            }
+          }
+        });
+
+        if (visibleHeaders.length > 0) {
+          // Sort visible headers by their original index in periodHeaders
+          // to correctly identify first and last truly visible
+          visibleHeaders.sort((a, b) => periodHeaders.indexOf(a) - periodHeaders.indexOf(b));
+          onVisiblePeriodsChange(visibleHeaders[0], visibleHeaders[visibleHeaders.length - 1]);
+        } else {
+          onVisiblePeriodsChange(null, null);
+        }
+      },
+      {
+        root: scrollContainerRef.current,
+        rootMargin: "0px", // No margin
+        threshold: 0.5, // At least 50% of the element is visible
+      }
+    );
+
+    const currentRefs = weekHeaderRefs.current;
+    currentRefs.forEach(ref => {
+      if (ref) observer.observe(ref);
+    });
+
+    return () => {
+      currentRefs.forEach(ref => {
+        if (ref) observer.unobserve(ref);
+      });
+      observer.disconnect();
+    };
+  }, [periodHeaders, onVisiblePeriodsChange, scrollContainerRef.current]);
+
+
   const renderTableItem = (item: CapacityDataRow): React.ReactNode[] => {
     const rows: React.ReactNode[] = [];
     const isExpanded = expandedItems[item.id] || false;
@@ -274,8 +334,11 @@ export function CapacityTable({
           </TableCell>
         )}
         {periodHeaders.map((ph, index) => {
+           // Render empty cells for the rest of the header row if it's an expandable item
+           // to ensure proper column alignment for its content rows.
            if (item.children && item.children.length > 0 && index === 0) { 
-             return null;
+             // This cell is covered by the colSpan=1 button cell above
+             return null; 
            }
              return (
                 <TableCell key={`${item.id}-${ph}-headerplaceholder`} className={`${ (item.children && item.children.length > 0) ? 'py-3' : ''}`}></TableCell>
@@ -300,36 +363,28 @@ export function CapacityTable({
 
   const getCategoryHeader = () => {
     if (data.length === 0) return 'Category / Metric';
-    const firstTopLevelItem = data[0];
-    if (firstTopLevelItem.level === 0) {
-      if (firstTopLevelItem.itemType === 'BU' && selectedGroupBy === 'Business Unit') return 'BU / LoB / Team / Metric';
-      if (firstTopLevelItem.itemType === 'LOB' && selectedGroupBy === 'Line of Business') return 'LoB / Team / Metric';
-    }
-    // Fallback or when BU is selected but LOBs are shown, or vice-versa
-    if (selectedGroupBy === 'Business Unit') return 'BU / LoB / Team / Metric';
-    return 'LoB / Team / Metric';
+    // Logic to determine header based on current grouping can be more complex if needed
+    // For now, a simpler approach:
+    const firstItemType = data[0]?.itemType;
+    if (firstItemType === 'BU') return 'BU / LoB / Team / Metric';
+    if (firstItemType === 'LOB') return 'LoB / Team / Metric';
+    return 'Category / Metric';
   };
-
-  // Determine selectedGroupBy from the data structure if possible, or pass as prop
-  // This is a simplification; ideally, selectedGroupBy would be a prop or context
-  let selectedGroupBy: string = "Business Unit"; // Default
-  if (data.length > 0 && data[0].itemType === 'LOB' && data[0].level === 0) {
-      selectedGroupBy = "Line of Business";
-  }
 
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="overflow-x-auto relative border border-border rounded-md shadow-md">
+      <div ref={scrollContainerRef} className="overflow-x-auto relative border border-border rounded-md shadow-md">
         <Table className="min-w-full">
           <TableHeader className="sticky top-0 z-40 bg-card"> 
             <TableRow>
               <TableHead className="sticky left-0 z-50 bg-card min-w-[320px] whitespace-nowrap shadow-sm px-4">
                 {getCategoryHeader()}
               </TableHead>
-              {periodHeaders.map((period) => (
+              {periodHeaders.map((period, index) => (
                 <TableHead 
                   key={period} 
+                  ref={el => { if(el) weekHeaderRefs.current[index] = el;}}
                   className={`text-right min-w-[120px] whitespace-nowrap px-2`}
                 >
                   {period}
@@ -353,4 +408,3 @@ export function CapacityTable({
     </TooltipProvider>
   );
 }
-

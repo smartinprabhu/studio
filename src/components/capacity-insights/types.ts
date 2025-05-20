@@ -46,19 +46,21 @@ export interface FilterOptions {
 
 export type GroupByOption = "Business Unit" | "Line of Business";
 
-export const ALL_WEEKS_HEADERS = Array.from({ length: 52 }, (_, i) => {
-  const startDate = new Date(2024, 0, 1 + i * 7); // Ensure year is fixed for consistency
+export const ALL_WEEKS_HEADERS = Array.from({ length: 104 }, (_, i) => { // Extended to 104 weeks
+  const baseDate = new Date(2024, 0, 1); // Start from Jan 1, 2024
+  const startDate = new Date(baseDate.setDate(baseDate.getDate() + i * 7 - (baseDate.getDay() === 0 ? 6 : baseDate.getDay() -1 ) )); // Adjust to start of week (Monday)
   const endDate = new Date(startDate.getTime() + 6 * 24 * 60 * 60 * 1000);
   const formatDate = (date: Date) => `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
-  return `Wk${i + 1}: ${formatDate(startDate)}-${formatDate(endDate)}`;
+  return `Wk${i + 1}: ${formatDate(startDate)}-${formatDate(endDate)} (${startDate.getFullYear()})`;
 });
+
 
 export const ALL_MONTH_HEADERS = Array.from({ length: 12 }, (_, i) => {
   const date = new Date(2024, i, 1); // Ensure year is fixed
   return date.toLocaleString('default', { month: 'long', year: 'numeric' }); // e.g. "January 2024"
 });
 
-export const NUM_PERIODS_DISPLAYED = 8; // Increased from 4 to 8
+export const NUM_PERIODS_DISPLAYED = 8;
 export type TimeInterval = "Week" | "Month";
 
 
@@ -110,7 +112,7 @@ export interface AggregatedPeriodicMetrics extends BaseAgentMinuteValues, BaseHC
 // Raw entry for a team's input data for all periods
 export interface RawTeamDataEntry {
   teamName: TeamName;
-  // Key is period header (e.g., "Wk1: 01/01-01/07")
+  // Key is period header (e.g., "Wk1: 01/01-01/07 (2024)")
   // These are input metrics. HC related metrics will be calculated/aggregated in processing.
   periodicInputData: Record<string, Omit<TeamPeriodicMetrics, 'requiredHC' | 'overUnderHC' | '_calculatedRequiredAgentMinutes' | '_calculatedActualAgentMinutes'>>;
 }
@@ -120,7 +122,7 @@ export interface RawLoBCapacityEntry {
   id: string; // Unique ID for the LOB entry, e.g., "wfs_us_chat"
   bu: BusinessUnitName;
   lob: string;
-  lobTotalBaseRequiredMinutes: Record<string, number | null>; // e.g. { "Wk1": 500000 }
+  lobTotalBaseRequiredMinutes: Record<string, number | null>; // e.g. { "Wk1: 01/01-01/07 (2024)": 500000 }
   teams: RawTeamDataEntry[];
 }
 
@@ -141,8 +143,8 @@ export interface MetricDefinition {
     isPercentage?: boolean;
     isHC?: boolean;
     isTime?: boolean; /* for AHT in minutes */
-    isEditableForTeam?: boolean; // New flag
-    step?: number; // For number inputs
+    isEditableForTeam?: boolean; 
+    step?: string | number; // For number inputs, allow "any" for decimals
 }
 
 export type TeamMetricDefinitions = MetricDefinition[];

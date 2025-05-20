@@ -24,7 +24,7 @@ import {
   RawTeamDataEntry,
 } from "@/components/capacity-insights/types";
 import type { MetricDefinition } from "@/components/capacity-insights/types";
-import { parse, isWithinInterval, getWeek, getMonth, getYear, format as formatDate } from 'date-fns';
+import { getWeek, getMonth, getYear, parse as dateParse, format as formatDateFn } from 'date-fns';
 
 
 const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60; // 40 hours * 60 minutes
@@ -78,6 +78,7 @@ const calculateTeamMetricsForPeriod = (
     calculatedActualAgentMinutes = null;
   }
 
+
   return {
     ...defaults,
     _calculatedRequiredAgentMinutes: calculatedRequiredAgentMinutes,
@@ -87,26 +88,26 @@ const calculateTeamMetricsForPeriod = (
   };
 };
 
-// This function is for determining the current period's index, not for default view.
 const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): number => {
   const now = new Date();
   if (interval === "Week") {
-    // ALL_WEEKS_HEADERS are like "Wk1:...", "Wk2:..."
-    // getWeek returns 1 for the first week, etc. Array index is 0-based.
-    const currentWeekNumberOfYear = getWeek(now, { weekStartsOn: 1 }); // ISO week
-    const calculatedIndex = currentWeekNumberOfYear - 1;
-    if (calculatedIndex >= 0 && calculatedIndex < headers.length) {
-      return calculatedIndex;
-    }
+    const currentYear = getYear(now);
+    const currentWeekOfYear = getWeek(now, { weekStartsOn: 1 }); // ISO week
+    const targetHeaderPrefix = `Wk${currentWeekOfYear}:`;
+    const targetHeaderSuffix = `(${currentYear})`;
+    
+    const foundIndex = headers.findIndex(h => h.startsWith(targetHeaderPrefix) && h.endsWith(targetHeaderSuffix));
+    if (foundIndex !== -1) return foundIndex;
+
+    // Fallback: if current year's week not found (e.g. data starts/ends mid-year for a different year)
+    // or if headers are less than current week, just return 0 or a sensible default.
+    // For this app, since headers span multiple years, this precise matching is better.
   } else if (interval === "Month") {
-    // ALL_MONTH_HEADERS are "January 2024", "February 2024", ...
-    // getMonth(now) returns 0 for January, 1 for February, etc. This directly matches the index.
-    const currentMonthIndex = getMonth(now);
-    if (currentMonthIndex >= 0 && currentMonthIndex < headers.length) {
-      return currentMonthIndex;
-    }
+    const currentMonthStr = formatDateFn(now, "MMMM yyyy"); // e.g., "July 2024"
+    const foundIndex = headers.findIndex(h => h === currentMonthStr);
+    if (foundIndex !== -1) return foundIndex;
   }
-  return 0; // Fallback to the first period if current not found or out of range
+  return 0; 
 };
 
 
@@ -120,10 +121,10 @@ export default function CapacityInsightsPage() {
   const [selectedGroupBy, setSelectedGroupBy] = useState<GroupByOption>(filterOptions.groupByOptions[0]);
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
   
-  // Initialize currentPeriodIndex to 0 to always start from the beginning
-  const [currentPeriodIndex, setCurrentPeriodIndex] = useState<number>(0);
+  const [currentPeriodIndex, setCurrentPeriodIndex] = useState<number>(0); 
   
   const [currentDateDisplay, setCurrentDateDisplay] = useState("");
+  const [dynamicDateDisplay, setDynamicDateDisplay] = useState<string | null>(null);
   const [displayedPeriodHeaders, setDisplayedPeriodHeaders] = useState<string[]>([]);
 
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
@@ -172,7 +173,7 @@ export default function CapacityInsightsPage() {
         const remainingMixPercentage = 100 - updatedTeamMix;
 
         if (otherTeams.length > 0) {
-          if (currentTotalMixOfOtherTeams > 0) {
+          if (currentTotalMixOfOtherTeams > 0) { // Distribute proportionally
             let distributedSum = 0;
             for (let i = 0; i < otherTeams.length; i++) {
               const team = otherTeams[i];
@@ -184,55 +185,93 @@ export default function CapacityInsightsPage() {
                 team.periodicInputData[periodHeader] = {};
               }
 
-              if (i === otherTeams.length - 1) { 
+              if (i === otherTeams.length - 1 && otherTeams.length > 1) { // Ensure last team takes up slack for precision
                 newShare = remainingMixPercentage - distributedSum;
               }
               newShare = Math.max(0, Math.min(100, parseFloat(newShare.toFixed(1)) ) ); 
               (team.periodicInputData[periodHeader] as any).volumeMixPercentage = newShare;
               distributedSum += newShare;
             }
-            // Final adjustment to ensure 100%
-            const finalSum = lobEntry.teams.reduce((sum, t) => {
-                const teamPeriodData = t.periodicInputData[periodHeader];
-                return sum + (teamPeriodData?.volumeMixPercentage ?? 0);
-            },0);
-
-            if (finalSum !== 100 && otherTeams.length > 0) {
-                const diff = 100 - finalSum;
-                const lastOtherTeam = otherTeams[otherTeams.length -1];
-                 if (!lastOtherTeam.periodicInputData[periodHeader]) {
-                    lastOtherTeam.periodicInputData[periodHeader] = {};
-                  }
-                (lastOtherTeam.periodicInputData[periodHeader] as any).volumeMixPercentage = Math.max(0, Math.min(100, ((lastOtherTeam.periodicInputData[periodHeader] as any).volumeMixPercentage ?? 0) + diff));
-            }
-
           } else { // If other teams had 0 mix, distribute remaining equally
-            const mixPerOtherTeam = otherTeams.length > 0 ? remainingMixPercentage / otherTeams.length : 0;
-            otherTeams.forEach(team => {
+            const mixPerOtherTeam = otherTeams.length > 0 ? parseFloat((remainingMixPercentage / otherTeams.length).toFixed(1)) : 0;
+            let distributedSum = 0;
+            otherTeams.forEach((team, i) => {
               if (!team.periodicInputData[periodHeader]) {
                 team.periodicInputData[periodHeader] = {};
               }
-              (team.periodicInputData[periodHeader] as any).volumeMixPercentage = Math.max(0, Math.min(100, parseFloat(mixPerOtherTeam.toFixed(1)) ));
+              let currentMix = mixPerOtherTeam;
+              if (i === otherTeams.length -1 && otherTeams.length > 1) {
+                  currentMix = remainingMixPercentage - distributedSum;
+              }
+              (team.periodicInputData[periodHeader] as any).volumeMixPercentage = Math.max(0, Math.min(100, parseFloat(currentMix.toFixed(1)) ));
+              distributedSum += parseFloat(currentMix.toFixed(1));
             });
-             // Final adjustment to ensure 100%
-            const finalSum = lobEntry.teams.reduce((sum, t) => {
-                const teamPeriodData = t.periodicInputData[periodHeader];
-                return sum + (teamPeriodData?.volumeMixPercentage ?? 0);
-            },0);
-            if (finalSum !== 100 && otherTeams.length > 0) {
-                const diff = 100 - finalSum;
-                 const lastOtherTeam = otherTeams[otherTeams.length -1];
-                 if (!lastOtherTeam.periodicInputData[periodHeader]) {
-                    lastOtherTeam.periodicInputData[periodHeader] = {};
-                  }
-                (lastOtherTeam.periodicInputData[periodHeader] as any).volumeMixPercentage = Math.max(0, Math.min(100, ((lastOtherTeam.periodicInputData[periodHeader] as any).volumeMixPercentage ?? 0) + diff));
-            }
           }
+        }
+         // Final adjustment pass to ensure sum is exactly 100% due to floating point issues
+        let finalSum = lobEntry.teams.reduce((sum, t) => {
+            const teamPeriodData = t.periodicInputData[periodHeader];
+            return sum + (teamPeriodData?.volumeMixPercentage ?? 0);
+        },0);
+        
+        if (finalSum !== 100 && lobEntry.teams.length > 0) {
+            const diff = 100 - finalSum;
+            const teamToAdjust = lobEntry.teams.find(t => t.teamName === teamNameToUpdate) || lobEntry.teams[0]; // Adjust the edited team or first team
+             if (!teamToAdjust.periodicInputData[periodHeader]) {
+                teamToAdjust.periodicInputData[periodHeader] = {};
+              }
+            (teamToAdjust.periodicInputData[periodHeader] as any).volumeMixPercentage = 
+                Math.max(0, Math.min(100, parseFloat( ((teamToAdjust.periodicInputData[periodHeader] as any).volumeMixPercentage + diff).toFixed(1) ) ));
         }
       }
       return newData;
     });
   }, []);
+
+  const handleVisiblePeriodsChange = useCallback((firstVisibleHeader: string | null, lastVisibleHeader: string | null) => {
+    if (selectedTimeInterval === "Month" || (!firstVisibleHeader && !lastVisibleHeader)) {
+      setDynamicDateDisplay(null); // For months, or if nothing is visible, fallback to pagination display
+      return;
+    }
+
+    if (firstVisibleHeader && lastVisibleHeader) {
+      // Extract MM/DD from "WkX: MM/DD-MM/DD (YYYY)"
+      const firstDateMatch = firstVisibleHeader.match(/:\s*(\d{2}\/\d{2})/);
+      const firstYearMatch = firstVisibleHeader.match(/\((\d{4})\)/);
+      // Extract end MM/DD from "WkX: MM/DD-MM/DD (YYYY)"
+      const lastDateMatch = lastVisibleHeader.match(/-(\d{2}\/\d{2})/);
+      const lastYearMatch = lastVisibleHeader.match(/\((\d{4})\)/);
+
+      const firstDateStr = firstDateMatch ? firstDateMatch[1] : '';
+      const firstYearStr = firstYearMatch ? firstYearMatch[1] : '';
+      const lastDateStr = lastDateMatch ? lastDateMatch[1] : '';
+      const lastYearStr = lastYearMatch ? lastYearMatch[1] : '';
+      
+      if (firstDateStr && lastDateStr && firstYearStr && lastYearStr) {
+        if (firstYearStr === lastYearStr) {
+          setDynamicDateDisplay(`${firstDateStr} - ${lastDateStr} (${firstYearStr})`);
+        } else {
+          setDynamicDateDisplay(`${firstDateStr}/${firstYearStr} - ${lastDateStr}/${lastYearStr}`);
+        }
+      } else if (firstDateStr && firstYearStr) { // Only one week visible
+         setDynamicDateDisplay(`${firstDateStr} (${firstYearStr})`);
+      } else {
+        setDynamicDateDisplay(null); // Fallback
+      }
+    } else if (firstVisibleHeader) {
+      const firstDateMatch = firstVisibleHeader.match(/:\s*(\d{2}\/\d{2})/);
+      const firstYearMatch = firstVisibleHeader.match(/\((\d{4})\)/);
+      const firstDateStr = firstDateMatch ? firstDateMatch[1] : '';
+      const firstYearStr = firstYearMatch ? firstYearMatch[1] : '';
+       if (firstDateStr && firstYearStr) {
+         setDynamicDateDisplay(`${firstDateStr} (${firstYearStr})`);
+       } else {
+         setDynamicDateDisplay(null);
+       }
+    } else {
+      setDynamicDateDisplay(null);
+    }
+  }, [selectedTimeInterval]);
 
 
   useEffect(() => {
@@ -310,6 +349,8 @@ export default function CapacityInsightsPage() {
                 let actAgentMinutesSum = 0;
                 let reqHcSum = 0;
                 let actHcSum = 0;
+                let overUnderHcSum = 0;
+
                 childrenTeamsDataRows.forEach(teamRow => {
                     const teamPeriodMetric = teamRow.periodicData[period] as TeamPeriodicMetrics;
                     if (teamPeriodMetric) {
@@ -317,17 +358,18 @@ export default function CapacityInsightsPage() {
                         actAgentMinutesSum += teamPeriodMetric._calculatedActualAgentMinutes ?? 0;
                         reqHcSum += teamPeriodMetric.requiredHC ?? 0;
                         actHcSum += teamPeriodMetric.actualHC ?? 0;
+                        overUnderHcSum += teamPeriodMetric.overUnderHC ?? 0;
                     }
                 });
                 const adherence = reqAgentMinutesSum > 0 ? (actAgentMinutesSum / reqAgentMinutesSum) * 100 : null;
                 lobPeriodicData[period] = {
-                    required: reqAgentMinutesSum, // These are aggregated agent minutes
-                    actual: actAgentMinutesSum,   // These are aggregated agent minutes
+                    required: reqAgentMinutesSum, 
+                    actual: actAgentMinutesSum,   
                     overUnder: actAgentMinutesSum - reqAgentMinutesSum,
                     adherence: adherence,
                     requiredHC: reqHcSum,
                     actualHC: actHcSum,
-                    overUnderHC: actHcSum - reqHcSum,
+                    overUnderHC: actHcSum - reqHcSum, // Recalculate for aggregate consistency
                 };
              });
              
@@ -390,9 +432,6 @@ export default function CapacityInsightsPage() {
         if (lobRawEntriesForCurrentLob.length === 0) return;
         
         const childrenTeamsDataRows: CapacityDataRow[] = [];
-        // Use a consistent ID for LOB when grouped by LOB.
-        // The lobRawEntry.id might vary if multiple BUs have same LOB name and user selected "All" BUs.
-        // For top-level LOB grouping, the LOB name itself is a good unique ID.
         const lobIdForDisplay = lobName.toLowerCase().replace(/\s+/g, '-'); 
         
         lobRawEntriesForCurrentLob.forEach(lobRawEntry => { 
@@ -485,21 +524,37 @@ export default function CapacityInsightsPage() {
 
 
   useEffect(() => {
+    // This effect updates the pagination-based date display
     const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
     const currentBlock = sourcePeriods.slice(currentPeriodIndex, currentPeriodIndex + NUM_PERIODS_DISPLAYED);
     if (currentBlock.length > 0) {
-      const firstPeriod = currentBlock[0];
-      const lastPeriod = currentBlock[currentBlock.length - 1];
-      if (selectedTimeInterval === "Week") {
-        const firstDateMatch = firstPeriod.match(/:\s*(\d{2}\/\d{2})/);
-        const lastDateMatch = lastPeriod.match(/-(\d{2}\/\d{2})$/); 
+      const firstPeriodFull = currentBlock[0];
+      const lastPeriodFull = currentBlock[currentBlock.length - 1];
 
-        const firstDateStr = firstDateMatch ? firstDateMatch[1] : firstPeriod.split(': ')[1]?.split('-')[0] || firstPeriod;
-        const lastDateStr = lastDateMatch ? lastDateMatch[1] : lastPeriod.split('-').pop() || lastPeriod;
-        
-        setCurrentDateDisplay(`${firstDateStr} - ${lastDateStr} (${getYear(new Date(2024,0,1))})`); // Use 2024 for display consistency
+      if (selectedTimeInterval === "Week") {
+        const firstDateMatch = firstPeriodFull.match(/:\s*(\d{2}\/\d{2})/);
+        const firstYearMatch = firstPeriodFull.match(/\((\d{4})\)/);
+        const lastDateMatch = lastPeriodFull.match(/-(\d{2}\/\d{2})/);
+        const lastYearMatch = lastPeriodFull.match(/\((\d{4})\)/);
+
+        const firstDateStr = firstDateMatch ? firstDateMatch[1] : '';
+        const firstYearStr = firstYearMatch ? firstYearMatch[1] : '';
+        const lastDateStr = lastDateMatch ? lastDateMatch[1] : '';
+        const lastYearStr = lastYearMatch ? lastYearMatch[1] : '';
+
+        if (firstDateStr && lastDateStr && firstYearStr && lastYearStr) {
+          if (firstYearStr === lastYearStr) {
+            setCurrentDateDisplay(`${firstDateStr} - ${lastDateStr} (${firstYearStr})`);
+          } else {
+            setCurrentDateDisplay(`${firstDateStr}/${firstYearStr} - ${lastDateStr}/${lastYearStr}`);
+          }
+        } else if (firstDateStr && firstYearStr) {
+           setCurrentDateDisplay(`${firstDateStr} (${firstYearStr})`);
+        } else {
+           setCurrentDateDisplay("N/A");
+        }
       } else { 
-        setCurrentDateDisplay(currentBlock.length === 1 ? firstPeriod : `${firstPeriod} - ${lastPeriod}`);
+        setCurrentDateDisplay(currentBlock.length === 1 ? firstPeriodFull : `${firstPeriodFull} - ${lastPeriodFull}`);
       }
     } else {
       setCurrentDateDisplay("N/A");
@@ -517,6 +572,7 @@ export default function CapacityInsightsPage() {
       newIndex = Math.min(maxIndex, currentPeriodIndex + NUM_PERIODS_DISPLAYED);
     }
     setCurrentPeriodIndex(newIndex);
+    setDynamicDateDisplay(null); // Reset dynamic display on pagination
   };
 
   const toggleExpand = (id: string) => {
@@ -524,8 +580,8 @@ export default function CapacityInsightsPage() {
   };
   
   useEffect(() => {
-    // When time interval changes, reset currentPeriodIndex to 0
     setCurrentPeriodIndex(0); 
+    setDynamicDateDisplay(null); // Reset dynamic display on interval change
   }, [selectedTimeInterval]);
 
   return (
@@ -540,7 +596,7 @@ export default function CapacityInsightsPage() {
         onSelectGroupBy={(val) => setSelectedGroupBy(val as GroupByOption)}
         selectedTimeInterval={selectedTimeInterval}
         onSelectTimeInterval={(val) => setSelectedTimeInterval(val as TimeInterval)}
-        currentDateDisplay={currentDateDisplay}
+        currentDateDisplay={dynamicDateDisplay || currentDateDisplay}
         onNavigateTime={handleNavigateTime}
       />
       <main className="flex-grow overflow-auto p-4">
@@ -552,6 +608,7 @@ export default function CapacityInsightsPage() {
           teamMetricDefinitions={TEAM_METRIC_ROW_DEFINITIONS}
           aggregatedMetricDefinitions={AGGREGATED_METRIC_ROW_DEFINITIONS}
           onTeamMetricChange={handleTeamMetricChange}
+          onVisiblePeriodsChange={handleVisiblePeriodsChange}
         />
       </main>
     </div>
