@@ -14,7 +14,6 @@ import {
   RawLoBCapacityEntry,
   AggregatedPeriodicMetrics,
   TeamPeriodicMetrics,
-  NUM_PERIODS_DISPLAYED,
   BUSINESS_UNIT_CONFIG,
   ALL_BUSINESS_UNITS, 
   TeamName,
@@ -27,10 +26,8 @@ import {
 import type { MetricDefinition, FilterOptions } from "@/components/capacity-insights/types";
 import { getWeek, getMonth, getYear, parse as dateParse, format as formatDateFn, startOfWeek, endOfWeek, isWithinInterval as isWithinIntervalFns, setDate } from 'date-fns';
 
-
 const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60; 
 const STANDARD_MONTHLY_WORK_MINUTES = (40 * 52 / 12) * 60; 
-
 
 const calculateTeamMetricsForPeriod = (
   teamInputData: Partial<RawTeamDataEntry['periodicInputData'][string]>, 
@@ -78,7 +75,6 @@ const calculateTeamMetricsForPeriod = (
     calculatedActualAgentMinutes = null;
   }
 
-
   return {
     ...defaults,
     _calculatedRequiredAgentMinutes: calculatedRequiredAgentMinutes,
@@ -92,62 +88,35 @@ const parseDateFromHeaderString = (dateMMDD: string, year: string): Date | null 
   if (!dateMMDD || !year) return null;
   const [month, day] = dateMMDD.split('/').map(Number);
   if (isNaN(month) || isNaN(day) || isNaN(parseInt(year))) return null;
-  // Adjust for JavaScript's 0-indexed months
   const parsedDate = new Date(parseInt(year), month - 1, day);
-  // Basic validation: if the parsed date's month/day doesn't match, it was invalid (e.g., 02/30)
   if (parsedDate.getFullYear() !== parseInt(year) || parsedDate.getMonth() !== month - 1 || parsedDate.getDate() !== day) {
     return null;
   }
   return parsedDate;
 };
 
-
-const getIndexOfCurrentPeriod = (interval: TimeInterval, headers: string[]): number => {
-  const now = new Date();
+const getHeaderDateRange = (header: string, interval: TimeInterval): { startDate: Date | null, endDate: Date | null } => {
   if (interval === "Week") {
-    const currentYear = getYear(now);
-    const currentWeekOfYear = getWeek(now, { weekStartsOn: 1 }); // ISO week
-
-    for (let i = 0; i < headers.length; i++) {
-        const header = headers[i];
-        const yearMatch = header.match(/\((\d{4})\)/);
-        const dateRangeMatch = header.match(/(\d{2}\/\d{2})-(\d{2}\/\d{2})/);
-
-        if (yearMatch && dateRangeMatch) {
-            const headerYear = parseInt(yearMatch[1]);
-            if (headerYear !== currentYear) continue;
-
-            const [startDateStr, endDateStr] = dateRangeMatch.slice(1);
-            
-            const headerWeekStartDate = parseDateFromHeaderString(startDateStr, String(headerYear));
-            // For end date, we need to be careful with parsing if it spans across years or months.
-            // However, for weekly ranges within the same year, this should be fine.
-            const headerWeekEndDate = parseDateFromHeaderString(endDateStr, String(headerYear));
-            
-            if(headerWeekStartDate && headerWeekEndDate) {
-                const adjustedHeaderWeekEndDate = endOfWeek(headerWeekEndDate, { weekStartsOn: 1 });
-                if (isWithinIntervalFns(now, { start: headerWeekStartDate, end: adjustedHeaderWeekEndDate })) {
-                    return i;
-                }
-            }
-        } else { // Fallback for "WkX:" format
-            const weekNumMatch = header.match(/Wk(\d+):/);
-            if (weekNumMatch) {
-                const headerWeekNum = parseInt(weekNumMatch[1]);
-                 if (headerWeekNum === currentWeekOfYear && header.includes(`(${currentYear})`)) {
-                    return i;
-                }
-            }
-        }
+    const match = header.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
+    if (match) {
+      const [, startDateStr, endDateStr, yearStr] = match;
+      return {
+        startDate: parseDateFromHeaderString(startDateStr, yearStr),
+        endDate: parseDateFromHeaderString(endDateStr, yearStr),
+      };
     }
   } else if (interval === "Month") {
-    const currentMonthStr = formatDateFn(now, "MMMM yyyy"); 
-    const foundIndex = headers.findIndex(h => h === currentMonthStr);
-    if (foundIndex !== -1) return foundIndex;
+    const date = dateParse(header, "MMMM yyyy", new Date());
+    if (!isNaN(date.getTime())) {
+      const year = getYear(date);
+      const month = getMonth(date);
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      return { startDate: firstDay, endDate: lastDay };
+    }
   }
-  return 0; 
+  return { startDate: null, endDate: null };
 };
-
 
 export default function CapacityInsightsPage() {
   const [rawCapacityDataSource, setRawCapacityDataSource] = useState<RawLoBCapacityEntry[]>(() => JSON.parse(JSON.stringify(initialMockRawCapacityData)));
@@ -167,11 +136,10 @@ export default function CapacityInsightsPage() {
   const [selectedTeams, setSelectedTeams] = useState<TeamName[]>([...ALL_TEAM_NAMES]);
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
   
-  const [currentPeriodIndex, setCurrentPeriodIndex] = useState<number>(0);
-  
-  const [currentDateDisplay, setCurrentDateDisplay] = useState("");
-  const [dynamicDateDisplay, setDynamicDateDisplay] = useState<string | null>(null);
   const [displayedPeriodHeaders, setDisplayedPeriodHeaders] = useState<string[]>([]);
+  const [selectedStartPeriod, setSelectedStartPeriod] = useState<string>(ALL_WEEKS_HEADERS[0]);
+  const [selectedEndPeriod, setSelectedEndPeriod] = useState<string>(ALL_WEEKS_HEADERS[Math.min(11, ALL_WEEKS_HEADERS.length - 1)]); // Default to first 12 weeks or fewer
+  const [selectedRangeHeaderDisplay, setSelectedRangeHeaderDisplay] = useState<string>("");
 
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
 
@@ -274,55 +242,10 @@ export default function CapacityInsightsPage() {
     });
   }, []);
 
-  const handleVisiblePeriodsChange = useCallback((firstVisibleHeader: string | null, lastVisibleHeader: string | null) => {
-    if (selectedTimeInterval === "Month" || (!firstVisibleHeader && !lastVisibleHeader)) {
-      setDynamicDateDisplay(null); 
-      return;
-    }
-
-    if (firstVisibleHeader && lastVisibleHeader) {
-      const firstDateFullMatch = firstVisibleHeader.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
-      const lastDateFullMatch = lastVisibleHeader.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
-
-      const startDateStr = firstDateFullMatch ? firstDateFullMatch[1] : ''; 
-      const startYearStr = firstDateFullMatch ? firstDateFullMatch[3] : '';
-      const endDateStr = lastDateFullMatch ? lastDateFullMatch[2] : '';    
-      const endYearStr = lastDateFullMatch ? lastDateFullMatch[3] : '';
-
-      const startDate = parseDateFromHeaderString(startDateStr, startYearStr);
-      const endDate = parseDateFromHeaderString(endDateStr, endYearStr);
-      
-      if (startDate && endDate) {
-         setDynamicDateDisplay(`${formatDateFn(startDate, "dd/MM")} - ${formatDateFn(endDate, "dd/MM")}`);
-      } else {
-        setDynamicDateDisplay(null); 
-      }
-    } else if (firstVisibleHeader) { 
-       const firstDateFullMatch = firstVisibleHeader.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
-       if (firstDateFullMatch) {
-           const startDateStr = firstDateFullMatch[1];
-           const endDateStr = firstDateFullMatch[2];
-           const yearStr = firstDateFullMatch[3];
-           const startDate = parseDateFromHeaderString(startDateStr, yearStr);
-           const endDate = parseDateFromHeaderString(endDateStr, yearStr);
-           if (startDate && endDate) {
-               setDynamicDateDisplay(`${formatDateFn(startDate, "dd/MM")} - ${formatDateFn(endDate, "dd/MM")}`);
-           } else {
-               setDynamicDateDisplay(null);
-           }
-       } else {
-         setDynamicDateDisplay(null);
-       }
-    } else {
-      setDynamicDateDisplay(null);
-    }
-  }, [selectedTimeInterval]);
-
   const handleBusinessUnitChange = useCallback((bu: BusinessUnitName) => {
     setSelectedBusinessUnit(bu);
     const newLobsForBu = BUSINESS_UNIT_CONFIG[bu].lonsOfBusiness;
-    setSelectedLineOfBusiness([...newLobsForBu]); // Select all LOBs for the new BU by default
-    // No need to update filterOptions.linesOfBusiness here, it's derived in the useEffect below
+    setSelectedLineOfBusiness([...newLobsForBu]); 
   }, []);
   
   const handleLOBChange = useCallback((lobs: string[]) => {
@@ -333,6 +256,33 @@ export default function CapacityInsightsPage() {
     setSelectedTeams(teams);
   }, []);
 
+  const handleTimeIntervalChange = useCallback((interval: TimeInterval) => {
+    setSelectedTimeInterval(interval);
+    const sourcePeriods = interval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
+    setSelectedStartPeriod(sourcePeriods[0]);
+    setSelectedEndPeriod(sourcePeriods[Math.min(11, sourcePeriods.length - 1)]);
+  }, []);
+
+  const handleSetSelectedStartPeriod = useCallback((period: string) => {
+    const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
+    setSelectedStartPeriod(period);
+    const startIndex = sourcePeriods.indexOf(period);
+    const endIndex = sourcePeriods.indexOf(selectedEndPeriod);
+    if (startIndex > endIndex) {
+      setSelectedEndPeriod(period); // If start is after end, set end to start
+    }
+  }, [selectedTimeInterval, selectedEndPeriod]);
+
+  const handleSetSelectedEndPeriod = useCallback((period: string) => {
+    const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
+    setSelectedEndPeriod(period);
+    const startIndex = sourcePeriods.indexOf(selectedStartPeriod);
+    const endIndex = sourcePeriods.indexOf(period);
+    if (startIndex > endIndex) {
+      setSelectedStartPeriod(period); // If end is before start, set start to end
+    }
+  }, [selectedTimeInterval, selectedStartPeriod]);
+
 
   useEffect(() => {
     const newLobsForBu = BUSINESS_UNIT_CONFIG[selectedBusinessUnit].lonsOfBusiness;
@@ -340,8 +290,6 @@ export default function CapacityInsightsPage() {
     setSelectedLineOfBusiness(prevSelectedLOBs => {
       const sortedPrev = [...prevSelectedLOBs].sort().join(',');
       const sortedNew = [...newLobsForBu].sort().join(',');
-      // Only update if the LOB list for the BU is actually different,
-      // or if the selected LOBs are not a subset of the new BU's LOBs (e.g. BU changed)
       if (sortedPrev !== sortedNew || !prevSelectedLOBs.every(lob => newLobsForBu.includes(lob as LineOfBusinessName<typeof selectedBusinessUnit>)) ) {
         return [...newLobsForBu];
       }
@@ -368,14 +316,45 @@ export default function CapacityInsightsPage() {
   
   const processDataForTable = useCallback(() => {
     const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-    const periodsToDisplay = sourcePeriods.slice(currentPeriodIndex, currentPeriodIndex + NUM_PERIODS_DISPLAYED);
-    setDisplayedPeriodHeaders(periodsToDisplay);
-    const standardWorkMinutes = selectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
+    
+    let startIndex = sourcePeriods.indexOf(selectedStartPeriod);
+    let endIndex = sourcePeriods.indexOf(selectedEndPeriod);
 
+    if (startIndex === -1) startIndex = 0;
+    if (endIndex === -1) endIndex = Math.min(startIndex + 11, sourcePeriods.length - 1);
+    if (startIndex > endIndex) { // Ensure start is not after end
+        const temp = startIndex;
+        startIndex = endIndex;
+        endIndex = temp;
+    }
+    
+    const periodsToDisplay = sourcePeriods.slice(startIndex, endIndex + 1);
+    setDisplayedPeriodHeaders(periodsToDisplay);
+
+    // Update header display for selected range
+    if (periodsToDisplay.length > 0) {
+      const firstRange = getHeaderDateRange(periodsToDisplay[0], selectedTimeInterval);
+      const lastRange = getHeaderDateRange(periodsToDisplay[periodsToDisplay.length - 1], selectedTimeInterval);
+      let displayStr = "N/A";
+      if (selectedTimeInterval === "Week" && firstRange.startDate && lastRange.endDate) {
+        displayStr = `${formatDateFn(firstRange.startDate, "dd/MM")} - ${formatDateFn(lastRange.endDate, "dd/MM")}`;
+      } else if (selectedTimeInterval === "Month" && firstRange.startDate && lastRange.endDate) {
+         if (periodsToDisplay.length === 1) {
+            displayStr = formatDateFn(firstRange.startDate, "MMMM yyyy");
+         } else {
+            displayStr = `${formatDateFn(firstRange.startDate, "MMM yyyy")} - ${formatDateFn(lastRange.endDate, "MMM yyyy")}`;
+         }
+      }
+      setSelectedRangeHeaderDisplay(displayStr);
+    } else {
+      setSelectedRangeHeaderDisplay("N/A");
+    }
+
+
+    const standardWorkMinutes = selectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
     const relevantRawLobEntriesForSelectedBu = rawCapacityDataSource.filter(d => d.bu === selectedBusinessUnit);
     
     const newDisplayData: CapacityDataRow[] = [];
-    
     const buName = selectedBusinessUnit;
     
     if (relevantRawLobEntriesForSelectedBu.length === 0 && selectedLineOfBusiness.length === 0) { 
@@ -433,9 +412,6 @@ export default function CapacityInsightsPage() {
             });
             
             lobPeriodicData[period] = {
-                required: reqAgentMinutesSum, 
-                actual: actAgentMinutesSum,   
-                overUnder: actAgentMinutesSum - reqAgentMinutesSum,
                 requiredHC: reqHcSum,
                 actualHC: actHcSum,
                 overUnderHC: (actHcSum > 0 || reqHcSum > 0) ? actHcSum - reqHcSum : null,
@@ -455,24 +431,17 @@ export default function CapacityInsightsPage() {
     if (childrenLobsDataRows.length > 0 || selectedLineOfBusiness.length > 0) {
       const buPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
       periodsToDisplay.forEach(period => {
-        let reqAgentMinutesSum = 0;
-        let actAgentMinutesSum = 0;
         let reqHcSum = 0;
         let actHcSum = 0;
         childrenLobsDataRows.forEach(lobRow => {
             const lobPeriodMetric = lobRow.periodicData[period] as AggregatedPeriodicMetrics;
               if (lobPeriodMetric) {
-                reqAgentMinutesSum += lobPeriodMetric.required ?? 0;
-                actAgentMinutesSum += lobPeriodMetric.actual ?? 0;
                 reqHcSum += lobPeriodMetric.requiredHC ?? 0;
                 actHcSum += lobPeriodMetric.actualHC ?? 0;
               }
         });
         
         buPeriodicData[period] = {
-            required: reqAgentMinutesSum,
-            actual: actAgentMinutesSum,
-            overUnder: actAgentMinutesSum - reqAgentMinutesSum,
             requiredHC: reqHcSum,
             actualHC: actHcSum,
             overUnderHC: (actHcSum > 0 || reqHcSum > 0) ? actHcSum - reqHcSum : null,
@@ -495,7 +464,8 @@ export default function CapacityInsightsPage() {
       selectedLineOfBusiness, 
       selectedTeams,
       selectedTimeInterval, 
-      currentPeriodIndex,
+      selectedStartPeriod,
+      selectedEndPeriod,
       rawCapacityDataSource,
     ]);
 
@@ -504,65 +474,17 @@ export default function CapacityInsightsPage() {
     processDataForTable();
   }, [processDataForTable]);
 
-
-  useEffect(() => {
-    const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-    const currentBlock = sourcePeriods.slice(currentPeriodIndex, currentPeriodIndex + NUM_PERIODS_DISPLAYED);
-    if (currentBlock.length > 0) {
-      const firstPeriodFull = currentBlock[0];
-      const lastPeriodFull = currentBlock[currentBlock.length - 1];
-
-      if (selectedTimeInterval === "Week") {
-        const firstWeekDataMatch = firstPeriodFull.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
-        const lastWeekDataMatch = lastPeriodFull.match(/:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
-
-        if (firstWeekDataMatch && lastWeekDataMatch) {
-            const displayStartDateStr = firstWeekDataMatch[1]; 
-            const displayStartYearStr = firstWeekDataMatch[3];
-            const displayEndDateStr = lastWeekDataMatch[2];   
-            const displayEndYearStr = lastWeekDataMatch[3]; 
-
-            const startDate = parseDateFromHeaderString(displayStartDateStr, displayStartYearStr);
-            const endDate = parseDateFromHeaderString(displayEndDateStr, displayEndYearStr);
-
-            if (startDate && endDate) {
-                setCurrentDateDisplay(`${formatDateFn(startDate, "dd/MM")} - ${formatDateFn(endDate, "dd/MM")}`);
-            } else {
-                setCurrentDateDisplay("N/A");
-            }
-        } else {
-           setCurrentDateDisplay("N/A");
-        }
-      } else { 
-        setCurrentDateDisplay(currentBlock.length === 1 ? firstPeriodFull : `${firstPeriodFull} - ${lastPeriodFull}`);
-      }
-    } else {
-      setCurrentDateDisplay("N/A");
-    }
-  }, [selectedTimeInterval, currentPeriodIndex, displayedPeriodHeaders]); 
-
-  const handleNavigateTime = (direction: "prev" | "next") => {
-    const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-    const maxIndex = Math.max(0, sourcePeriods.length - NUM_PERIODS_DISPLAYED);
-    
-    let newIndex = currentPeriodIndex;
-    if (direction === "prev") {
-      newIndex = Math.max(0, currentPeriodIndex - NUM_PERIODS_DISPLAYED);
-    } else {
-      newIndex = Math.min(maxIndex, currentPeriodIndex + NUM_PERIODS_DISPLAYED);
-    }
-    setCurrentPeriodIndex(newIndex);
-    setDynamicDateDisplay(null); 
-  };
-
   const toggleExpand = useCallback((id: string) => {
     setExpandedItems(prev => ({ ...prev, [id]: !prev[id] }));
   }, []);
   
   useEffect(() => {
-    setCurrentPeriodIndex(0); 
-    setDynamicDateDisplay(null); 
+    const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
+    setSelectedStartPeriod(sourcePeriods[0]);
+    setSelectedEndPeriod(sourcePeriods[Math.min(11, sourcePeriods.length - 1)]);
   }, [selectedTimeInterval]);
+
+  const allAvailablePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -575,9 +497,14 @@ export default function CapacityInsightsPage() {
         selectedTeams={selectedTeams}
         onSelectTeams={handleTeamSelectionChange}
         selectedTimeInterval={selectedTimeInterval}
-        onSelectTimeInterval={(val) => setSelectedTimeInterval(val as TimeInterval)}
-        currentDateDisplay={dynamicDateDisplay || currentDateDisplay}
-        onNavigateTime={handleNavigateTime}
+        onSelectTimeInterval={handleTimeIntervalChange}
+        
+        allAvailablePeriods={allAvailablePeriods}
+        selectedStartPeriod={selectedStartPeriod}
+        onSelectStartPeriod={handleSetSelectedStartPeriod}
+        selectedEndPeriod={selectedEndPeriod}
+        onSelectEndPeriod={handleSetSelectedEndPeriod}
+        selectedRangeHeaderDisplay={selectedRangeHeaderDisplay}
       />
       <main className="flex-grow overflow-auto p-4">
         <CapacityTable 
@@ -588,9 +515,10 @@ export default function CapacityInsightsPage() {
           teamMetricDefinitions={TEAM_METRIC_ROW_DEFINITIONS}
           aggregatedMetricDefinitions={AGGREGATED_METRIC_ROW_DEFINITIONS}
           onTeamMetricChange={handleTeamMetricChange}
-          onVisiblePeriodsChange={handleVisiblePeriodsChange}
         />
       </main>
     </div>
   );
 }
+
+    
