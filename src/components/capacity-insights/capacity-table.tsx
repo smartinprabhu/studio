@@ -71,14 +71,22 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
     
     const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
       const valStr = e.target.value;
+      // Only update if the value changed or was cleared
       if (valStr === "" && (rawValue !== null && rawValue !== undefined)) {
         onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, "");
       } else {
         const val = parseFloat(valStr);
         if (!isNaN(val)) {
-          onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, String(val));
-        } else if (valStr !== "-" && valStr !== "") { // Allow clearing or intermediate "-"
-          onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, String(rawValue ?? ""));
+          if (val !== rawValue) { // Only update if value actually changed
+            onTeamMetricChange(lobId, teamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, String(val));
+          }
+        } else if (valStr !== "-" && valStr !== "" && (rawValue !== null && rawValue !== undefined)) { 
+           // If invalid input, revert to original value if it existed, otherwise it stays as what user typed (e.g. "-")
+           // This will be handled by the onChange, we might not need this explicit revert here
+           // but if the user blurs with invalid, it might be good to set it back.
+           // For now, the onChange handler will send the invalid string too.
+        } else if (valStr === "" && (rawValue === null || rawValue === undefined)) {
+          // Input is empty and original was null/undefined, no change needed on blur
         }
       }
     };
@@ -247,11 +255,12 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
   const renderTableItem = useCallback((item: CapacityDataRow): React.ReactNode[] => {
     const rows: React.ReactNode[] = [];
     const isExpanded = expandedItems[item.id] || false;
+    // Item is expandable if it has children (for BU/LOB) OR if it's a Team (to show/hide its metrics)
     const isExpandable = (item.children && item.children.length > 0) || item.itemType === 'Team';
 
     let rowSpecificBgClass = '';
     let buttonTextClass = 'text-foreground';
-    let itemZIndex = 20; // Default for metric labels
+    let itemZIndex = 20; // Default z-index for first column cells
 
     if (item.itemType === 'BU') {
       rowSpecificBgClass = 'bg-secondary';
@@ -281,7 +290,9 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
           )}
           style={{ 
             zIndex: itemZIndex,
-            paddingLeft: `${item.level * 1.5 + (isExpandable ? 0 : 1.5)}rem` // Indent non-expandable leaf nodes
+            // For non-expandable leaf items (which we don't really have anymore since Teams are expandable), 
+            // this would add space. For expandable, padding is handled by button.
+            paddingLeft: `${item.level * 1.5 + (isExpandable ? 0 : 1.5)}rem`
           }} 
         >
           <button
@@ -292,50 +303,59 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
                 buttonTextClass
             )}
             aria-expanded={isExpandable ? isExpanded : undefined}
+            style={{
+              // If not expandable but nested, ensure padding to align text as if icon was there
+              paddingLeft: !isExpandable && item.level > 0 && isExpandable === false ? '1.5rem' : undefined,
+            }}
           >
             {isExpandable && (
               <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
             )}
-             {!isExpandable && item.level > 0 && <span className="w-4 shrink-0"></span>} {/* Spacer for non-expandable items if needed */}
             {item.name}
           </button>
         </TableCell>
+        {/* Placeholder cells for period headers in the name row */}
         {periodHeaders.map((ph) => (
              <TableCell 
                 key={`${item.id}-${ph}-nameplaceholder`} 
                 className={cn(
                     rowSpecificBgClass, 
-                    isExpandable ? 'py-3' : '' 
+                    'py-3' // Match padding of the button in the first cell
                 )}></TableCell>
         ))}
       </TableRow>
     );
 
+    // If the item is expanded, render its content (metrics or children)
     if (isExpanded) {
-        if (item.itemType === 'Team') {
-            const teamMetricRows = renderCapacityItemContent(item);
-            rows.push(...teamMetricRows);
-        } else if (item.children && item.children.length > 0) { // For BU or LOB
-            // First, render aggregated metrics for BU/LOB itself
+        // For BUs and LOBs, first render their aggregated metrics, then their children
+        if (item.itemType === 'BU' || item.itemType === 'LOB') {
             const aggregatedMetricRows = renderCapacityItemContent(item);
             rows.push(...aggregatedMetricRows);
-            // Then, render children
-            item.children.forEach(child => {
-                rows.push(...renderTableItem(child));
-            });
+            if (item.children && item.children.length > 0) {
+                item.children.forEach(child => {
+                    rows.push(...renderTableItem(child));
+                });
+            }
+        } 
+        // For Teams, render their detailed metrics
+        else if (item.itemType === 'Team') {
+            const teamMetricRows = renderCapacityItemContent(item);
+            rows.push(...teamMetricRows);
         }
-        // No 'else' needed here because if not a Team and no children, it's an LOB (w/o teams) or BU (w/o LOBs) that has no further drill-down
-        // It would have already rendered its aggregated metrics if isExpanded was true OR if !isExpandable.
-        // Let's reconsider: if an LOB has no teams, it should still show its aggregated metrics if expanded or if not expandable.
-    } else if (!isExpandable && item.itemType !== 'Team') { // Non-expandable BU/LOB should show its metrics. (Teams are always expandable for their metrics)
+    }
+    // If an item is NOT expandable AND it's a BU or LOB (e.g. an LOB with no teams filtered, or a BU with no LOBs filtered),
+    // it should still show its aggregated metrics directly.
+    // Teams are always expandable for their metrics, so this condition primarily applies to BU/LOB.
+    else if (!isExpandable && (item.itemType === 'BU' || item.itemType === 'LOB')) {
         const itemMetricRows = renderCapacityItemContent(item);
         rows.push(...itemMetricRows);
     }
+
     return rows;
   }, [expandedItems, periodHeaders, toggleExpand, renderCapacityItemContent, teamMetricDefinitions, aggregatedMetricDefinitions]);
 
   const getCategoryHeader = () => {
-    if (data.length === 0) return 'Category / Metric';
     // Assuming data always starts with BU level based on current filtering
     return 'BU / LoB / Team / Metric';
   };
@@ -351,10 +371,12 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
               </TableHead>
               {periodHeaders.map((period) => {
                 const parts = period.split(': ');
-                const weekLabelPart = parts[0].replace("Wk", "W");
+                const weekLabelPart = parts[0].replace("Wk", "W"); // W1, W2 etc.
                 let dateRangePart = "";
                 if (parts.length > 1) {
-                  const dateAndYearPart = parts[1]; // e.g., "01/01-01/07 (2024)"
+                  // Example: "01/01-01/07 (2024)"
+                  const dateAndYearPart = parts[1];
+                  // Regex to capture MM/DD-MM/DD
                   const match = dateAndYearPart.match(/^(\d{2}\/\d{2}-\d{2}\/\d{2})/);
                   if (match) {
                     dateRangePart = match[1]; // "01/01-01/07"
@@ -396,6 +418,3 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 };
 CapacityTableComponent.displayName = 'CapacityTableComponent';
 export const CapacityTable = React.memo(CapacityTableComponent);
-
-
-    
