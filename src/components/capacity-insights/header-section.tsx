@@ -9,8 +9,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SelectGroup,
-  SelectLabel,
 } from "@/components/ui/select";
 import {
   DropdownMenu,
@@ -31,7 +29,6 @@ import {
   Download,
   History,
   Upload,
-  CalendarDays,
   Zap,
   Building2, 
   Briefcase, 
@@ -39,26 +36,9 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { AiGroupingDialog } from "./ai-grouping-dialog";
-import type { FilterOptions, TimeInterval, BusinessUnitName, TeamName } from "./types";
+import type { FilterOptions, TimeInterval, BusinessUnitName, TeamName, HeaderSectionProps } from "./types";
+import { DateRangePicker } from "./date-range-picker"; // Import the new component
 
-interface HeaderSectionProps {
-  filterOptions: FilterOptions;
-  selectedBusinessUnit: BusinessUnitName;
-  onSelectBusinessUnit: (value: BusinessUnitName) => void;
-  selectedLineOfBusiness: string[]; 
-  onSelectLineOfBusiness: (value: string[]) => void;
-  selectedTeams: TeamName[];
-  onSelectTeams: (value: TeamName[]) => void;
-  selectedTimeInterval: TimeInterval;
-  onSelectTimeInterval: (value: TimeInterval) => void;
-  
-  allAvailablePeriods: string[];
-  selectedStartPeriod: string;
-  onSelectStartPeriod: (value: string) => void;
-  selectedEndPeriod: string;
-  onSelectEndPeriod: (value: string) => void;
-  selectedRangeHeaderDisplay: string;
-}
 
 export function HeaderSection({
   filterOptions,
@@ -70,12 +50,8 @@ export function HeaderSection({
   onSelectTeams,
   selectedTimeInterval,
   onSelectTimeInterval,
-  allAvailablePeriods,
-  selectedStartPeriod,
-  onSelectStartPeriod,
-  selectedEndPeriod,
-  onSelectEndPeriod,
-  selectedRangeHeaderDisplay,
+  selectedDateRange,
+  onSelectDateRange,
 }: HeaderSectionProps) {
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
 
@@ -115,9 +91,6 @@ export function HeaderSection({
     teamDropdownLabel = `${selectedTeams.length} Teams Selected`;
   }
 
-  // Filter options for End Period dropdown
-  const startPeriodIndex = allAvailablePeriods.indexOf(selectedStartPeriod);
-  const endPeriodOptions = allAvailablePeriods.slice(startPeriodIndex);
 
   return (
     <TooltipProvider>
@@ -229,7 +202,6 @@ export function HeaderSection({
             </DropdownMenuContent>
           </DropdownMenu>
           
-          {/* Time Interval and Date Range Selection */}
           <div className="flex items-center gap-2 border rounded-md p-1 bg-muted">
             <Button 
               variant={selectedTimeInterval === "Week" ? "secondary" : "ghost"} 
@@ -249,44 +221,11 @@ export function HeaderSection({
             </Button>
           </div>
 
-          <Select value={selectedStartPeriod} onValueChange={onSelectStartPeriod}>
-            <SelectTrigger className="w-full lg:w-[220px] text-sm h-9">
-              <SelectValue placeholder={`Start ${selectedTimeInterval}`} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectLabel>Start {selectedTimeInterval}</SelectLabel>
-                {allAvailablePeriods.map(period => (
-                  <SelectItem key={`start-${period}`} value={period}>{period}</SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Select value={selectedEndPeriod} onValueChange={onSelectEndPeriod}>
-            <SelectTrigger className="w-full lg:w-[220px] text-sm h-9">
-              <SelectValue placeholder={`End ${selectedTimeInterval}`} />
-            </SelectTrigger>
-            <SelectContent>
-               <SelectGroup>
-                <SelectLabel>End {selectedTimeInterval}</SelectLabel>
-                {endPeriodOptions.map(period => (
-                  <SelectItem key={`end-${period}`} value={period}>{period}</SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <div className="flex items-center gap-1 lg:ml-auto">
-            <span className="text-sm font-medium text-muted-foreground min-w-[150px] text-center flex items-center justify-center gap-1 px-2">
-              <CalendarDays className="h-4 w-4" /> {selectedRangeHeaderDisplay}
-            </span>
-          </div>
+          <DateRangePicker date={selectedDateRange} onDateChange={onSelectDateRange} />
+          
         </div>
         <AiGroupingDialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen} />
       </header>
     </TooltipProvider>
   );
 }
-
-    

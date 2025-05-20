@@ -1,4 +1,6 @@
 
+import type { DateRange } from "react-day-picker";
+
 export interface MetricValues { // Represents base values for agent-minutes
   required: number | null;
   actual: number | null;
@@ -6,7 +8,6 @@ export interface MetricValues { // Represents base values for agent-minutes
 
 export interface CalculatedMetricValues extends MetricValues { // For LOB/BU agent-minute summary rows
   overUnder: number | null;
-  // adherence: number | null; // Removed Adherence
 }
 
 export const BUSINESS_UNIT_CONFIG = {
@@ -47,12 +48,17 @@ export interface FilterOptions {
 
 export const ALL_WEEKS_HEADERS = Array.from({ length: 104 }, (_, i) => { 
   const baseDate = new Date(2024, 0, 1); 
-  const weekStartDate = new Date(baseDate.getTime());
-  weekStartDate.setDate(baseDate.getDate() + i * 7);
   
-  const dayOfWeek = weekStartDate.getDay(); 
-  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const startDate = new Date(new Date(weekStartDate).setDate(weekStartDate.getDate() + diffToMonday));
+  // Find the Monday of the first week of 2024
+  const firstDayOfYear = new Date(baseDate.getFullYear(), 0, 1);
+  const dayOfWeek = firstDayOfYear.getDay(); // 0 for Sunday, 1 for Monday, ...
+  const diffToMondayOfFirstWeek = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const mondayOfFirstWeek = new Date(firstDayOfYear);
+  mondayOfFirstWeek.setDate(firstDayOfYear.getDate() + diffToMondayOfFirstWeek);
+
+  // Calculate the start date for week i+1
+  const startDate = new Date(mondayOfFirstWeek);
+  startDate.setDate(mondayOfFirstWeek.getDate() + i * 7);
   
   const endDate = new Date(new Date(startDate).setDate(startDate.getDate() + 6));
   const formatDatePart = (date: Date) => `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
@@ -60,8 +66,10 @@ export const ALL_WEEKS_HEADERS = Array.from({ length: 104 }, (_, i) => {
 });
 
 
-export const ALL_MONTH_HEADERS = Array.from({ length: 12 }, (_, i) => {
-  const date = new Date(2024, i, 1); 
+export const ALL_MONTH_HEADERS = Array.from({ length: 24 }, (_, i) => { // Extended to 24 months (2 years)
+  const year = 2024 + Math.floor(i / 12);
+  const month = i % 12;
+  const date = new Date(year, month, 1); 
   return date.toLocaleString('default', { month: 'long', year: 'numeric' }); 
 });
 
@@ -78,12 +86,12 @@ export interface BaseHCValues {
   overUnderHC: number | null; 
 }
 
-export interface BaseAgentMinuteValues { 
-  required: number | null; 
-  actual: number | null;   
-  overUnder: number | null; 
-  // adherence: number | null; // Removed Adherence
-}
+// BaseAgentMinuteValues is not directly used for display anymore, but concepts might be relevant for calculations
+// export interface BaseAgentMinuteValues { 
+//   required: number | null; 
+//   actual: number | null;   
+//   overUnder: number | null; 
+// }
 
 export interface TeamPeriodicMetrics extends BaseHCValues {
   aht: number | null; 
@@ -99,16 +107,22 @@ export interface TeamPeriodicMetrics extends BaseHCValues {
   newHireBatch: number | null; 
   newHireProduction: number | null; 
 
-  _productivity: number | null; 
+  _productivity: number | null; // Input: e.g. contacts/agent-hour.
   
-  _calculatedRequiredAgentMinutes?: number | null; 
-  _calculatedActualAgentMinutes?: number | null; 
+  // Calculated fields, not directly input by user in these assumption rows
+  _calculatedRequiredAgentMinutes?: number | null; // Calculated based on LOB total and Volume Mix
+  _calculatedActualAgentMinutes?: number | null; // Could be derived from Actual HC & productivity factors
 }
 
-export interface AggregatedPeriodicMetrics extends BaseAgentMinuteValues, BaseHCValues {}
+export interface AggregatedPeriodicMetrics extends BaseHCValues {
+  // required: number | null; // Removed
+  // actual: number | null; // Removed
+  // overUnder: number | null; // Removed
+}
 
 export interface RawTeamDataEntry {
   teamName: TeamName;
+  // Stores direct inputs for each period
   periodicInputData: Record<string, Partial<Omit<TeamPeriodicMetrics, 'requiredHC' | 'overUnderHC' | '_calculatedRequiredAgentMinutes' | '_calculatedActualAgentMinutes'>>>;
 }
 
@@ -116,6 +130,7 @@ export interface RawLoBCapacityEntry {
   id: string; 
   bu: BusinessUnitName;
   lob: string;
+  // Represents the total forecasted demand for the LOB in agent-minutes for each period
   lobTotalBaseRequiredMinutes: Record<string, number | null>; 
   teams: RawTeamDataEntry[];
 }
@@ -127,7 +142,7 @@ export interface CapacityDataRow {
   itemType: 'BU' | 'LOB' | 'Team'; 
   periodicData: Record<string, AggregatedPeriodicMetrics | TeamPeriodicMetrics>; 
   children?: CapacityDataRow[];
-  lobId?: string; 
+  lobId?: string; // Used to link team back to LOB for editing
 }
 
 export interface MetricDefinition {
@@ -143,7 +158,7 @@ export interface MetricDefinition {
 export type TeamMetricDefinitions = MetricDefinition[];
 export type AggregatedMetricDefinitions = MetricDefinition[];
 
-
+// Defines which metrics appear under each Team row and if they are editable
 export const TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = [
   { key: "aht", label: "AHT", isTime: true, isEditableForTeam: true, step: 0.1 },
   { key: "shrinkagePercentage", label: "Shrinkage %", isPercentage: true, isEditableForTeam: true, step: 0.1 },
@@ -152,7 +167,7 @@ export const TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = [
   { key: "attritionPercentage", label: "Attrition %", isPercentage: true, isEditableForTeam: true, step: 0.1 },
   { key: "volumeMixPercentage", label: "Volume Mix %", isPercentage: true, isEditableForTeam: true, step: 0.1 }, 
   { key: "requiredHC", label: "Required HC", isHC: true }, 
-  { key: "actualHC", label: "Actual HC", isHC: true, isEditableForTeam: true, step: 0.1 },
+  { key: "actualHC", label: "Actual HC", isHC: true, isEditableForTeam: true, step: 0.01 }, // step allows decimals
   { key: "overUnderHC", label: "Over/Under HC", isHC: true }, 
   { key: "moveIn", label: "Move In (+)", isEditableForTeam: true, step: 1, isHC: true },
   { key: "moveOut", label: "Move Out (-)", isEditableForTeam: true, step: 1, isHC: true },
@@ -160,9 +175,28 @@ export const TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = [
   { key: "newHireProduction", label: "New Hire Production", isEditableForTeam: true, step: 1, isHC: true },
 ];
 
+// Defines which metrics appear under each BU and LOB summary row
 export const AGGREGATED_METRIC_ROW_DEFINITIONS: AggregatedMetricDefinitions = [
-  // { key: "adherence", label: "Adherence (%)", isPercentage: true }, // Removed Adherence
+  // { key: "required", label: "Required (Agent Mins)" }, // Removed
+  // { key: "actual", label: "Actual (Agent Mins)" }, // Removed
+  // { key: "overUnder", label: "Over/Under (Agent Mins)" }, // Removed
   { key: "requiredHC", label: "Required HC", isHC: true }, 
   { key: "actualHC", label: "Actual HC", isHC: true },    
   { key: "overUnderHC", label: "Over/Under HC", isHC: true },
 ];
+
+
+export interface HeaderSectionProps {
+  filterOptions: FilterOptions;
+  selectedBusinessUnit: BusinessUnitName;
+  onSelectBusinessUnit: (value: BusinessUnitName) => void;
+  selectedLineOfBusiness: string[]; 
+  onSelectLineOfBusiness: (value: string[]) => void;
+  selectedTeams: TeamName[];
+  onSelectTeams: (value: TeamName[]) => void;
+  selectedTimeInterval: TimeInterval;
+  onSelectTimeInterval: (value: TimeInterval) => void;
+  
+  selectedDateRange: DateRange | undefined;
+  onSelectDateRange: (value: DateRange | undefined) => void;
+}
