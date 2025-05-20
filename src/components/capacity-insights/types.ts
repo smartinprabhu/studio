@@ -39,16 +39,23 @@ export type LineOfBusinessName<BU extends BusinessUnitName = BusinessUnitName> =
 export const ALL_BUSINESS_UNITS = Object.keys(BUSINESS_UNIT_CONFIG) as BusinessUnitName[];
 
 export interface FilterOptions {
-  businessUnits: (BusinessUnitName | "All")[];
-  linesOfBusiness: string[]; // Can be LOB name or "All"
-  groupByOptions: GroupByOption[];
+  businessUnits: BusinessUnitName[];
+  linesOfBusiness: string[]; 
+  teams: TeamName[];
 }
 
-export type GroupByOption = "Business Unit" | "Line of Business";
 
-export const ALL_WEEKS_HEADERS = Array.from({ length: 104 }, (_, i) => { // Extended to 104 weeks
-  const baseDate = new Date(2024, 0, 1); // Start from Jan 1, 2024
-  const startDate = new Date(baseDate.setDate(baseDate.getDate() + i * 7 - (baseDate.getDay() === 0 ? 6 : baseDate.getDay() -1 ) )); // Adjust to start of week (Monday)
+export const ALL_WEEKS_HEADERS = Array.from({ length: 104 }, (_, i) => { 
+  const baseDate = new Date(2024, 0, 1); 
+  // Create a new date object for each iteration to avoid modifying the same object
+  const weekStartDate = new Date(baseDate.getTime());
+  weekStartDate.setDate(baseDate.getDate() + i * 7);
+  
+  // Adjust to start of week (Monday)
+  const dayOfWeek = weekStartDate.getDay(); // Sunday = 0, Monday = 1, ..., Saturday = 6
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const startDate = new Date(weekStartDate.setDate(weekStartDate.getDate() + diffToMonday));
+  
   const endDate = new Date(startDate.getTime() + 6 * 24 * 60 * 60 * 1000);
   const formatDate = (date: Date) => `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
   return `Wk${i + 1}: ${formatDate(startDate)}-${formatDate(endDate)} (${startDate.getFullYear()})`;
@@ -60,7 +67,7 @@ export const ALL_MONTH_HEADERS = Array.from({ length: 12 }, (_, i) => {
   return date.toLocaleString('default', { month: 'long', year: 'numeric' }); // e.g. "January 2024"
 });
 
-export const NUM_PERIODS_DISPLAYED = 8;
+export const NUM_PERIODS_DISPLAYED = 60; // Changed from 8 to 60
 export type TimeInterval = "Week" | "Month";
 
 
@@ -114,7 +121,7 @@ export interface RawTeamDataEntry {
   teamName: TeamName;
   // Key is period header (e.g., "Wk1: 01/01-01/07 (2024)")
   // These are input metrics. HC related metrics will be calculated/aggregated in processing.
-  periodicInputData: Record<string, Omit<TeamPeriodicMetrics, 'requiredHC' | 'overUnderHC' | '_calculatedRequiredAgentMinutes' | '_calculatedActualAgentMinutes'>>;
+  periodicInputData: Record<string, Partial<Omit<TeamPeriodicMetrics, 'requiredHC' | 'overUnderHC' | '_calculatedRequiredAgentMinutes' | '_calculatedActualAgentMinutes'>>>;
 }
 
 // Raw entry for an LOB, containing its teams and LOB-level base demand forecast
@@ -162,10 +169,10 @@ export const TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = [
   { key: "requiredHC", label: "Required HC", isHC: true }, // Calculated
   { key: "actualHC", label: "Actual HC", isHC: true, isEditableForTeam: true, step: 0.1 },
   { key: "overUnderHC", label: "Over/Under HC", isHC: true }, // Calculated
-  { key: "moveIn", label: "Move In (+)", isEditableForTeam: true, step: 1 },
-  { key: "moveOut", label: "Move Out (-)", isEditableForTeam: true, step: 1 },
-  { key: "newHireBatch", label: "New Hire Batch", isEditableForTeam: true, step: 1 },
-  { key: "newHireProduction", label: "New Hire Production", isEditableForTeam: true, step: 1 },
+  { key: "moveIn", label: "Move In (+)", isEditableForTeam: true, step: 1, isHC: true },
+  { key: "moveOut", label: "Move Out (-)", isEditableForTeam: true, step: 1, isHC: true },
+  { key: "newHireBatch", label: "New Hire Batch", isEditableForTeam: true, step: 1, isHC: true },
+  { key: "newHireProduction", label: "New Hire Production", isEditableForTeam: true, step: 1, isHC: true },
   // { key: "_productivity", label: "Productivity", isEditableForTeam: true }, // Example if productivity becomes directly editable
 ];
 
@@ -176,3 +183,4 @@ export const AGGREGATED_METRIC_ROW_DEFINITIONS: AggregatedMetricDefinitions = [
   { key: "actualHC", label: "Actual HC", isHC: true },    
   { key: "overUnderHC", label: "Over/Under HC", isHC: true },
 ];
+
