@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
@@ -24,9 +23,6 @@ import {
   differenceInCalendarWeeks,
   addWeeks,
   isSameDay,
-  // getUTCDate, // Removed: will use date.getUTCDate()
-  // getUTCMonth, // Removed: will use date.getUTCMonth()
-  // getUTCFullYear as getUTCFullYearFns, // Removed: will use date.getUTCFullYear()
 } from 'date-fns';
 import type { DateRange } from "react-day-picker";
 
@@ -101,8 +97,6 @@ const generateFiscalWeekHeaders = (startFiscalYear: number, numTotalWeeks: numbe
   let currentYear = startFiscalYear;
   let fiscalYearActualStartDate: Date;
 
-  // For a leap year (e.g., 2024), fiscal year starts the week of Feb 1st.
-  // For a standard year, fiscal year starts the week of Jan 22nd.
   const targetDateForStart = isLeapYear(currentYear) 
     ? new Date(Date.UTC(currentYear, 1, 1)) // February 1st
     : new Date(Date.UTC(currentYear, 0, 22)); // January 22nd
@@ -117,7 +111,6 @@ const generateFiscalWeekHeaders = (startFiscalYear: number, numTotalWeeks: numbe
     const weekEndDate = new Date(weekStartDate);
     weekEndDate.setUTCDate(weekStartDate.getUTCDate() + 6);
     
-    // The display year for the header should be the calendar year of the week's start date
     const displayYearForHeader = weekStartDate.getUTCFullYear();
 
     headers.push(
@@ -167,7 +160,7 @@ export type LineOfBusinessName<BU extends BusinessUnitName = BusinessUnitName> =
 export const ALL_BUSINESS_UNITS = Object.keys(BUSINESS_UNIT_CONFIG) as BusinessUnitName[];
 export const ALL_TEAM_NAMES: TeamName[] = ["Inhouse", "BPO1", "BPO2"];
 
-export const NUM_PERIODS_DISPLAYED = 60; 
+export const NUM_PERIODS_DISPLAYED = 60; // Kept for pagination logic if DateRangePicker is not preferred, but DateRangePicker now controls display length
 export type TimeInterval = "Week" | "Month";
 export type TeamName = "Inhouse" | "BPO1" | "BPO2";
 
@@ -190,7 +183,7 @@ export interface TeamPeriodicMetrics extends BaseHCValues {
   newHireBatch: number | null; 
   newHireProduction: number | null; 
   
-  _productivity: number | null; // Legacy or future use, not directly used in current major calcs
+  _productivity: number | null; 
 
   _calculatedRequiredAgentMinutes?: number | null; 
   _calculatedActualProductiveAgentMinutes?: number | null; 
@@ -220,12 +213,10 @@ export type TeamMetricDefinitions = MetricDefinition[];
 export type AggregatedMetricDefinitions = MetricDefinition[];
 
 export const TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = [
-  // Primary HC - Top Level under Team
   { key: "requiredHC", label: "Required HC", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Calculated number of headcount required based on demand and productivity assumptions." },
   { key: "actualHC", label: "Actual/Starting HC", isHC: true, isEditableForTeam: true, step: 0.01, category: 'PrimaryHC', description: "The actual or starting headcount for the period before adjustments." }, 
   { key: "overUnderHC", label: "Over/Under HC", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Difference between Actual/Starting HC and Required HC." },
   
-  // Assumptions - Under "Assumptions" expander
   { key: "aht", label: "AHT", isTime: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Average Handle Time: The average time taken to handle one interaction." },
   { key: "shrinkagePercentage", label: "Shrinkage %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Shrinkage: Percentage of paid time that agents are not available for handling interactions (e.g., breaks, training, meetings)." },
   { key: "occupancyPercentage", label: "Occupancy %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Occupancy: Percentage of time agents are busy with interaction-related work during their available time." },
@@ -233,7 +224,6 @@ export const TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = [
   { key: "attritionPercentage", label: "Attrition %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Attrition: Percentage of agents expected to leave during the period." },
   { key: "volumeMixPercentage", label: "Volume Mix %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Volume Mix: Percentage of the LOB's total volume handled by this team." },
   
-  // HC Adjustments - Under "HC Adjustments" expander
   { key: "moveIn", label: "Move In (+)", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Headcount moving into this team from other teams or roles." },
   { key: "moveOut", label: "Move Out (-)", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Headcount moving out of this team to other teams or roles." },
   { key: "newHireBatch", label: "New Hire Batch", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Number of new hires starting in a batch during this period (typically in training)." },
@@ -242,7 +232,6 @@ export const TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = [
   { key: "hcAfterAttrition", label: "HC After Attrition", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Headcount remaining after attrition loss." }, 
   { key: "endingHC", label: "Ending HC", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Projected headcount at the end of the period after all adjustments." }, 
 
-  // Internal Calculations - (Typically not displayed directly as rows in this structure, but useful for tooltips)
   { key: "_calculatedRequiredAgentMinutes", label: "Eff. Req. Mins (Team)", isDisplayOnly: true, isTime: true, category: 'Internal', description: "Team's share of LOB demand minutes, adjusted for the team's backlog percentage." }, 
   { key: "_calculatedActualProductiveAgentMinutes", label: "Actual Prod. Mins (Team)", isDisplayOnly: true, isTime: true, category: 'Internal', description: "Total productive agent minutes available from the team's actual headcount, considering shrinkage and occupancy." }, 
 ];
@@ -252,7 +241,7 @@ export const AGGREGATED_METRIC_ROW_DEFINITIONS: AggregatedMetricDefinitions = [
   { key: "requiredHC", label: "Required HC", isHC: true },
   { key: "actualHC", label: "Actual HC", isHC: true }, 
   { key: "overUnderHC", label: "Over/Under HC", isHC: true },
-  { key: "lobTotalBaseRequiredMinutes", label: "LOB Total Base Req Mins", isTime: true },
+  { key: "lobTotalBaseRequiredMinutes", label: "LOB Total Base Req Mins", isTime: true, description: "Total base agent minutes required for the LOB, calculated from Volume x AHT or direct input." },
 ];
 
 export interface FilterOptions {
@@ -271,8 +260,10 @@ export interface HeaderSectionProps {
   selectedDateRange: DateRange | undefined;
   onSelectDateRange: (value: DateRange | undefined) => void;
   allAvailablePeriods: string[]; 
-  displayedPeriodHeaders: string[]; // For the sticky header
-  activeHierarchyContext: string; // For the sticky header
+  // New props for integrated table header
+  displayedPeriodHeaders: string[]; 
+  activeHierarchyContext: string;
+  headerPeriodScrollerRef: React.RefObject<HTMLDivElement>;
 }
 
 
@@ -298,7 +289,7 @@ export interface CapacityDataRow {
   itemType: 'BU' | 'LOB' | 'Team';
   periodicData: Record<string, AggregatedPeriodicMetrics | TeamPeriodicMetrics>;
   children?: CapacityDataRow[];
-  lobId?: string; // For teams, to link back to LOB for editing context
+  lobId?: string; 
 }
 // --- END CONSOLIDATED TYPES ---
 
@@ -352,6 +343,7 @@ const generateTeamPeriodicInputData = (periods: string[], teamIndex: number, tot
       moveOut: Math.floor(Math.random() * 3),
       newHireBatch: Math.random() > 0.7 ? Math.floor(Math.random() * 10) + 5 : 0,
       newHireProduction: Math.random() > 0.5 ? Math.floor(Math.random() * 8) : 0,
+      _productivity: 1.0, // Placeholder
     };
   });
   return metrics;
@@ -418,7 +410,7 @@ const calculateTeamMetricsForPeriod = (
     attritionLossHC: null,
     hcAfterAttrition: null,
     endingHC: null,
-    ...teamInputDataCurrentPeriod, 
+    ...(teamInputDataCurrentPeriod || {}), // Ensure teamInputDataCurrentPeriod is not undefined
   };
 
   const baseTeamRequiredMinutes = (lobTotalBaseRequiredMinutesForPeriod ?? 0) * ((defaults.volumeMixPercentage ?? 0) / 100);
@@ -466,12 +458,9 @@ const parseDateFromHeaderStringMMDD = (dateMMDD: string, year: string): Date | n
   const [month, day] = dateMMDD.split('/').map(Number);
   if (isNaN(month) || isNaN(day) || isNaN(parseInt(year))) return null;
   
-  // Date.UTC expects month to be 0-indexed
   const parsedDate = new Date(Date.UTC(parseInt(year), month - 1, day)); 
   
-  // Validate if the parsed date components match the input, accounting for Date object behavior
   if (parsedDate.getUTCFullYear() !== parseInt(year) || parsedDate.getUTCMonth() !== month - 1 || parsedDate.getUTCDate() !== day) {
-    // This can happen for invalid dates like 02/30 which Date.UTC might adjust
     return null; 
   }
   return parsedDate;
@@ -480,7 +469,6 @@ const parseDateFromHeaderStringMMDD = (dateMMDD: string, year: string): Date | n
 
 const getHeaderDateRange = (header: string, interval: TimeInterval): { startDate: Date | null, endDate: Date | null } => {
   if (interval === "Week") {
-    // Updated regex to capture FWkX and the year explicitly
     const match = header.match(/FWk\d+:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
     if (match) {
       const [, startDateStr, endDateStr, yearStr] = match;
@@ -488,37 +476,21 @@ const getHeaderDateRange = (header: string, interval: TimeInterval): { startDate
       let parsedStartDate = parseDateFromHeaderStringMMDD(startDateStr, yearStr);
       let parsedEndDate = parseDateFromHeaderStringMMDD(endDateStr, yearStr);
 
-      // Handle year rollover for end date if MM/DD of end date is earlier than start date
-      // (e.g., start: 12/30, end: 01/05 means end date is in the next year)
       if (parsedStartDate && parsedEndDate && isBefore(parsedEndDate, parsedStartDate)) {
-         // Attempt to parse end date with next year
-         const nextYearStr = (parseInt(yearStr) + 1).toString();
-         const potentialEndDateNextYear = parseDateFromHeaderStringMMDD(endDateStr, nextYearStr);
-         if (potentialEndDateNextYear && isAfter(potentialEndDateNextYear, parsedStartDate)) {
-            // If valid and after start date, use it
-            parsedEndDate = potentialEndDateNextYear;
-         } else { // This case implies the start date might be in the previous year than displayed
-            // e.g. header "(2024)" but start date 12/30 end date 01/05, so start actually 2023
-            // Or, more likely, the week straddles Dec/Jan so start date is in header year, end date in next year
-            // The current logic of taking yearStr for start and possibly yearStr+1 for end is usually correct.
-            // If fiscal week generation is sound, this complex reverse logic might not be needed.
-            // Let's assume the primary year in header string is for the start date.
-            // If end date's month is numerically less than start date's month, it's next year.
-            const startMonth = parseInt(startDateStr.split('/')[0]);
-            const endMonth = parseInt(endDateStr.split('/')[0]);
-            if (endMonth < startMonth) { // e.g. 12/xx - 01/xx
-                parsedEndDate = parseDateFromHeaderStringMMDD(endDateStr, (parseInt(yearStr) + 1).toString());
-            }
+         const startMonth = parseInt(startDateStr.split('/')[0]);
+         const endMonth = parseInt(endDateStr.split('/')[0]);
+         if (endMonth < startMonth) { 
+             parsedEndDate = parseDateFromHeaderStringMMDD(endDateStr, (parseInt(yearStr) + 1).toString());
          }
       }
       return { startDate: parsedStartDate, endDate: parsedEndDate };
     }
   } else if (interval === "Month") {
     try {
-      const date = dateParseFns(header, "MMMM yyyy", new Date()); // Use current date as base for parsing
-      if (!isNaN(date.getTime())) { // Check if date is valid
-        const yearVal = getYear(date); // Use date-fns getYear
-        const monthVal = getMonth(date); // Use date-fns getMonth (0-indexed)
+      const date = dateParseFns(header, "MMMM yyyy", new Date()); 
+      if (!isNaN(date.getTime())) { 
+        const yearVal = getYear(date); 
+        const monthVal = getMonth(date); 
         const firstDay = startOfMonth(new Date(yearVal, monthVal));
         const lastDay = endOfMonth(new Date(yearVal, monthVal));
         return { startDate: firstDay, endDate: lastDay };
@@ -532,21 +504,19 @@ const getHeaderDateRange = (header: string, interval: TimeInterval): { startDate
 
 const getDefaultDateRange = (interval: TimeInterval): DateRange => {
   const headers = interval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-  const numPeriodsToDefault = interval === "Week" ? 11 : 2; // Default to 12 weeks or 3 months
+  const numPeriodsToDefault = interval === "Week" ? 11 : 2; 
 
   if (headers.length === 0) return { from: undefined, to: undefined };
 
   const fromHeaderDetails = getHeaderDateRange(headers[0], interval);
-  // Ensure toHeaderIndex doesn't exceed bounds
   const toHeaderIndex = Math.min(numPeriodsToDefault, headers.length - 1);
   const toHeaderDetails = getHeaderDateRange(headers[toHeaderIndex], interval);
   
   let fromDate = fromHeaderDetails.startDate;
   let toDate = toHeaderDetails.endDate;
   
-  // Fallback if parsing fails, though with new fiscal logic it should be more robust
   if (!fromDate) fromDate = new Date(); 
-  if (!toDate) toDate = interval === "Week" ? endOfWeek(addWeeks(fromDate, 11)) : endOfMonth(addDays(startOfMonth(fromDate), 60)); // approx 3 months
+  if (!toDate) toDate = interval === "Week" ? endOfWeek(addWeeks(fromDate, 11)) : endOfMonth(addDays(startOfMonth(fromDate), 60));
 
   return { from: fromDate ?? undefined, to: toDate ?? undefined };
 };
@@ -556,7 +526,6 @@ const findFiscalWeekHeaderForDate = (targetDate: Date, allFiscalHeaders: string[
   for (const header of allFiscalHeaders) {
     const { startDate, endDate } = getHeaderDateRange(header, "Week");
     if (startDate && endDate) {
-      // Compare only date parts, ignoring time, and ensure UTC context
       const targetDayOnly = new Date(Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate()));
       const sDateOnly = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate()));
       const eDateOnly = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate()));
@@ -719,11 +688,8 @@ function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps
     let newButtonText = "Pick a date range"; 
     if (typeof window !== 'undefined' && date?.from) { 
         const fromDateObj = date.from;
-        // Use findFiscalWeekHeaderForDate to get the week label
         const fromWeekInfo = findFiscalWeekHeaderForDate(fromDateObj, ALL_WEEKS_HEADERS);
-        // Extract only the "FWkX" part
         const fromFiscalWeekLabel = fromWeekInfo ? fromWeekInfo.split(':')[0] : `W${getWeek(fromDateObj, { weekStartsOn: 1 })}`;
-        // Format date as dd/MM/yyyy using UTC parts
         const formattedFromDate = `${String(fromDateObj.getUTCDate()).padStart(2, '0')}/${String(fromDateObj.getUTCMonth() + 1).padStart(2, '0')}/${fromDateObj.getUTCFullYear()}`;
         
         newButtonText = `${fromFiscalWeekLabel} (${formattedFromDate})`;
@@ -734,11 +700,10 @@ function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps
             const toFiscalWeekLabel = toWeekInfo ? toWeekInfo.split(':')[0] : `W${getWeek(toDateObj, { weekStartsOn: 1 })}`;
             const formattedToDate = `${String(toDateObj.getUTCDate()).padStart(2, '0')}/${String(toDateObj.getUTCMonth() + 1).padStart(2, '0')}/${toDateObj.getUTCFullYear()}`;
             
-            // Only add "to" part if it's a different week start than "from" week start
             const fromWeekStartForLabel = startOfWeek(fromDateObj, {weekStartsOn: 1});
             const toWeekStartForLabel = startOfWeek(toDateObj, {weekStartsOn: 1});
 
-            if (!isSameDay(fromWeekStartForLabel, toWeekStartForLabel)) { // Compare actual start of weeks
+            if (!isSameDay(fromWeekStartForLabel, toWeekStartForLabel)) { 
                 newButtonText += ` - ${toFiscalWeekLabel} (${formattedToDate})`;
             }
         }
@@ -748,17 +713,15 @@ function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps
 
 
   const yearsInHeaders = useMemo(() => 
-    // Get unique years from the ALL_WEEKS_HEADERS
     [...new Set(ALL_WEEKS_HEADERS.map(h => {
-      const match = h.match(/\((\d{4})\)$/); // Regex to find year like (YYYY) at end of string
+      const match = h.match(/\((\d{4})\)$/); 
       return match ? parseInt(match[1]) : 0;
-    }).filter(y => y > 0))] // Filter out any 0s if regex fails
+    }).filter(y => y > 0))] 
   , []);
   
   const minYear = yearsInHeaders.length > 0 ? Math.min(...yearsInHeaders) : new Date().getUTCFullYear();
   const maxYear = yearsInHeaders.length > 0 ? Math.max(...yearsInHeaders) : new Date().getUTCFullYear() + 1;
   
-  // Ensure defaultCalendarMonth is a valid Date instance
   const defaultCalendarMonth = date?.from instanceof Date ? date.from : new Date(Date.UTC(minYear, 0, 1));
 
   return (
@@ -769,7 +732,7 @@ function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps
             id="date"
             variant={"outline"}
             className={cn(
-              "w-full lg:w-[380px] justify-start text-left font-normal h-9", // Adjusted width for potentially longer text
+              "w-full lg:w-[380px] justify-start text-left font-normal h-9", 
               !date && "text-muted-foreground"
             )}
           >
@@ -781,7 +744,7 @@ function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps
           <Calendar
             initialFocus
             mode="range"
-            weekStartsOn={1} // Monday
+            weekStartsOn={1} 
             captionLayout="dropdown-buttons"
             fromYear={minYear}
             toYear={maxYear} 
@@ -798,13 +761,12 @@ function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps
                 newTo = endOfWeek(newTo, { weekStartsOn: 1 });
               }
               
-              // Ensure 'to' is not before 'from'
               if (newFrom && newTo && isBefore(newTo, newFrom)) {
-                newTo = endOfWeek(newFrom, {weekStartsOn: 1}); // Set 'to' to end of 'from' week
+                newTo = endOfWeek(newFrom, {weekStartsOn: 1}); 
               }
 
               const processedRange: DateRange | undefined = newFrom
-                ? { from: newFrom, to: newTo || endOfWeek(newFrom, {weekStartsOn: 1}) } // if only 'from' is selected, 'to' is end of that week
+                ? { from: newFrom, to: newTo || endOfWeek(newFrom, {weekStartsOn: 1}) } 
                 : undefined;
               onDateChange(processedRange);
             }}
@@ -831,10 +793,10 @@ function HeaderSection({
   allAvailablePeriods,
   displayedPeriodHeaders,
   activeHierarchyContext,
+  headerPeriodScrollerRef,
 }: HeaderSectionProps) { 
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
-  const headerPeriodScrollerRef = useRef<HTMLDivElement>(null);
-
+  // Removed the local scroll ref as it's passed in now.
 
   const handleLobSelectionChange = (lob: string, checked: boolean) => {
     const newSelectedLOBs = checked
@@ -859,7 +821,6 @@ function HeaderSection({
   return (
     <TooltipProvider>
       <header className="sticky top-0 z-50 bg-background p-4 border-b border-border"> 
-        {/* Filter Controls Row */}
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
           <h1 className="text-2xl font-semibold text-foreground">Capacity Insights</h1>
           <div className="flex flex-wrap items-center gap-2">
@@ -943,7 +904,6 @@ function HeaderSection({
           <DateRangePicker date={selectedDateRange} onDateChange={onSelectDateRange} />
         </div>
         
-        {/* Table Week Headers Row - Integrated into HeaderSection */}
         <div className="mt-4 flex items-center border-b border-t border-border bg-card -mx-4 px-4">
           <div className="sticky left-0 z-55 bg-card min-w-[320px] whitespace-nowrap px-4 py-2 text-sm font-semibold text-foreground h-12 flex items-center">
             {activeHierarchyContext}
@@ -999,7 +959,7 @@ interface CapacityTableProps {
   onSetEditingCell: (id: string | null, period: string | null, metricKey: string | null) => void;
   selectedTimeInterval: TimeInterval;
   onActiveHierarchyChange: (newContext: string | null) => void;
-  tableBodyScrollRef: React.RefObject<HTMLDivElement>; // For scroll sync
+  tableBodyScrollRef: React.RefObject<HTMLDivElement>; 
 }
 
 interface MetricCellContentProps {
@@ -1129,13 +1089,12 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
       (item.itemType === 'Team' && isRelevantMetricForTeam) ||
       ((item.itemType === 'BU' || item.itemType === 'LOB') && isRelevantMetricForAggregated);
 
-  
+
   if (item.itemType === 'LOB' && metricDef.key === 'lobTotalBaseRequiredMinutes') {
-    // This metric is now handled by the BU conditional hiding below for BU rows.
-    // For LOB rows, it's simply not in AGGREGATED_METRIC_ROW_DEFINITIONS anymore if you want it hidden by default.
-    // If it needs to be conditionally hidden (like for BU), a similar check as below for BU would be needed here.
-    // For now, assume if it's in AGGREGATED_METRIC_ROW_DEFINITIONS, it shows for LOB unless filtered out earlier.
-    // The request was to hide it for BUs, which is done.
+      // Handled by the skip in renderCapacityItemContent for LOBs
+  }
+  if (item.itemType === 'BU' && metricDef.key === 'lobTotalBaseRequiredMinutes') {
+      // Handled by the skip in renderCapacityItemContent for BUs
   }
 
 
@@ -1152,8 +1111,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
   let textColor = "text-foreground";
   let icon: React.ReactNode = null;
   let formulaText = "";
-  let descriptionText = ""; // Will be shown inline, not in tooltip for assumptions
-
+ 
   const numValue = Number(rawValue);
   const teamMetrics = metricData as TeamPeriodicMetrics;
   const aggMetrics = metricData as AggregatedPeriodicMetrics;
@@ -1178,9 +1136,9 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
   }
 
   let baseTooltipText = `${item.name} - ${periodName}\n${metricDef.label}: ${displayValue}`;
-
-  // Description text is for inline display now, not tooltip, for assumptions.
-  // But calculation formulas will remain in tooltips.
+  if (metricDef.description) {
+    baseTooltipText += `\n\nDescription: ${metricDef.description}`;
+  }
 
   if (item.itemType === 'Team') {
     switch (metricDef.key) {
@@ -1235,7 +1193,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
                 const lobVol = lobEntry.lobVolumeForecast?.[periodName];
                 const lobAHT = lobEntry.lobAverageAHT?.[periodName];
                 let lobTotalBase = 0;
-                if (lobVol !== null && lobVol !== undefined && lobAHT !== null && lobAHT !== undefined) {
+                if (lobVol !== null && lobVol !== undefined && lobAHT !== null && lobAHT !== undefined && avgAHT > 0) {
                   lobTotalBase = lobVol * lobAHT;
                 } else if (lobEntry.lobTotalBaseRequiredMinutes?.[periodName] !== null && lobEntry.lobTotalBaseRequiredMinutes?.[periodName] !== undefined) {
                   lobTotalBase = lobEntry.lobTotalBaseRequiredMinutes[periodName]!;
@@ -1296,10 +1254,6 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
   }
   
   let tooltipContent = baseTooltipText;
-  // metricDef.description is now shown inline for assumptions
-  // if (metricDef.description && metricDef.category !== 'Assumption') { 
-  //   tooltipContent += `\n\nDescription: ${metricDef.description}`;
-  // }
   if (formulaText) {
     tooltipContent += `\n\n${formulaText}`;
   }
@@ -1349,17 +1303,21 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
         className="sticky left-0 z-20 bg-card font-normal text-foreground whitespace-nowrap py-2"
         style={{ paddingLeft: `${level * 1.5 + 0.5}rem`, paddingRight: '1rem' }}
       >
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <span>{metricDef.label}</span>
-            {item.itemType === 'Team' && metricDef.isEditableForTeam && !metricDef.isDisplayOnly && 
-             (metricDef.category === 'Assumption' || metricDef.category === 'PrimaryHC' || metricDef.category === 'HCAdjustment') && 
-             <Edit3 className="h-3 w-3 text-muted-foreground opacity-50" />}
-          </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-2 cursor-default"> {/* Changed from flex-col to items-center for label and icon */}
+              <span>{metricDef.label}</span>
+              {item.itemType === 'Team' && metricDef.isEditableForTeam && !metricDef.isDisplayOnly && 
+              (metricDef.category === 'Assumption' || metricDef.category === 'PrimaryHC' || metricDef.category === 'HCAdjustment') && 
+              <Edit3 className="h-3 w-3 text-muted-foreground opacity-50" />}
+            </div>
+          </TooltipTrigger>
           {metricDef.description && (
-            <div className="text-xs text-muted-foreground mt-0.5 pr-2">{metricDef.description}</div>
+          <TooltipContent className="whitespace-pre-wrap text-xs max-w-xs">
+            <p>{metricDef.description}</p>
+          </TooltipContent>
           )}
-        </div>
+        </Tooltip>
       </TableCell>
       {periodHeaders.map((periodHeader) => {
         const metricForPeriod = item.periodicData[periodHeader];
@@ -1379,7 +1337,7 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
         return (
           <TableCell
             key={`${item.id}-${metricDef.key}-${periodHeader}`}
-            className={`text-right tabular-nums ${cellTextColor} py-2 px-2`}
+            className={`text-right tabular-nums ${cellTextColor} py-2 px-2 min-w-[100px]`} // Ensure data cells also have min-width
           >
             <MetricCellContent
                 item={item}
@@ -1415,7 +1373,6 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
   onActiveHierarchyChange,
   tableBodyScrollRef,
 }) => {
-  const scrollContainerRef = tableBodyScrollRef; // Use passed ref
   const itemNameRowRefs = useRef<Map<string, HTMLTableRowElement | null>>(new Map());
 
   useEffect(() => {
@@ -1453,14 +1410,12 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
     };
 
     let observer: IntersectionObserver | null = null;
-    const currentScrollContainer = scrollContainerRef.current;
+    const currentScrollContainer = tableBodyScrollRef.current;
 
     if (currentScrollContainer) {
-      // The week header is no longer part of this table, so offset is from top of scroll container
-      const topOffsetForObserver = 5; // Small offset to ensure item is slightly below top
       const options: IntersectionObserverInit = {
         root: currentScrollContainer,
-        rootMargin: `${topOffsetForObserver}px 0px -90% 0px`, 
+        rootMargin: `5px 0px -90% 0px`, 
         threshold: 0.01, 
       };
       observer = new IntersectionObserver(observerCallback, options);
@@ -1474,7 +1429,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
         if (rowElement) observer?.unobserve(rowElement); 
       });
     };
-  }, [periodHeaders, data, onActiveHierarchyChange, scrollContainerRef]); 
+  }, [periodHeaders, data, onActiveHierarchyChange, tableBodyScrollRef]); 
 
 
   const renderTeamMetrics = useCallback((item: CapacityDataRow, category: MetricDefinition['category'], baseLevel: number) => {
@@ -1547,9 +1502,11 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 
     } else { 
       AGGREGATED_METRIC_ROW_DEFINITIONS.forEach(metricDef => {
-        // Skip "LOB Total Base Req Mins" for BU rows
         if (item.itemType === 'BU' && metricDef.key === 'lobTotalBaseRequiredMinutes') { 
           return; 
+        }
+        if (item.itemType === 'LOB' && metricDef.key === 'lobTotalBaseRequiredMinutes') {
+            return;
         }
         rows.push(
           <MetricRow
@@ -1634,7 +1591,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
         {periodHeaders.map((ph, idx) => (
           <TableCell
             key={`${item.id}-${ph}-nameplaceholder`}
-            className={cn(rowSpecificBgClass, 'py-3')} 
+            className={cn(rowSpecificBgClass, 'py-3 min-w-[100px]')} // Ensure placeholder cells match data cell min-width
           ></TableCell>
         ))}
       </TableRow>
@@ -1654,9 +1611,6 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
         rows.push(...teamMetricStructure);
       }
     } else if (!isItemExpandable && (item.itemType === 'BU' || item.itemType === 'LOB')) { 
-      // This case might not be needed if non-expandable BUs/LOBs are not expected to show metrics directly.
-      // Currently, BUs/LOBs only show metrics if they are expanded OR if they are leaf nodes (no children)
-      // If a BU/LOB has no children, isItemExpandable will be false, and it will fall here.
       const itemMetricRows = renderCapacityItemContent(item);
       rows.push(...itemMetricRows);
     }
@@ -1668,9 +1622,8 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div ref={scrollContainerRef} className="overflow-x-auto relative border border-border rounded-md shadow-md">
+      <div ref={tableBodyScrollRef} className="overflow-x-auto relative border border-border rounded-md shadow-md">
         <Table className="min-w-full">
-          {/* TableHeader is now removed and integrated into HeaderSection */}
           <TableBody>
             {data.length > 0 ? (
               data.flatMap(item => renderTableItem(item))
@@ -1733,10 +1686,9 @@ export default function CapacityInsightsPage() {
 
   const [activeHierarchyContext, setActiveHierarchyContext] = useState<string>("BU / LoB / Team / Metric");
 
-  // Refs for scroll synchronization
-  const headerPeriodScrollerRef = useRef<HTMLDivElement>(null); // For HeaderSection's period scroller
-  const tableBodyScrollRef = useRef<HTMLDivElement>(null);      // For CapacityTable's body scroller
-  const isSyncingScroll = useRef(false); // To prevent infinite scroll sync loop
+  const headerPeriodScrollerRef = useRef<HTMLDivElement>(null);
+  const tableBodyScrollRef = useRef<HTMLDivElement>(null);
+  const isSyncingScroll = useRef(false);
 
 
   const handleActiveHierarchyChange = useCallback((newContext: string | null) => {
@@ -1876,11 +1828,12 @@ export default function CapacityInsightsPage() {
       }
       lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = newValue;
       
-      // If direct minutes are set, clear volume/AHT for that period as minutes take precedence
-      if (!lobEntry.lobVolumeForecast) lobEntry.lobVolumeForecast = {};
-      if (!lobEntry.lobAverageAHT) lobEntry.lobAverageAHT = {};
-      lobEntry.lobVolumeForecast[periodHeader] = null; 
-      lobEntry.lobAverageAHT[periodHeader] = null;
+      if (newValue !== null) { // If minutes are directly input, nullify forecast/AHT
+        if (!lobEntry.lobVolumeForecast) lobEntry.lobVolumeForecast = {};
+        if (!lobEntry.lobAverageAHT) lobEntry.lobAverageAHT = {};
+        lobEntry.lobVolumeForecast[periodHeader] = null; 
+        lobEntry.lobAverageAHT[periodHeader] = null;
+      }
 
       return newData;
     });
@@ -1888,7 +1841,6 @@ export default function CapacityInsightsPage() {
 
   const handleBusinessUnitChange = useCallback((bu: BusinessUnitName) => {
     setSelectedBusinessUnit(bu);
-    // LOBs will be updated by the useEffect hook below
   }, []); 
 
   const handleLOBChange = useCallback((lobs: string[]) => {
@@ -1917,17 +1869,10 @@ export default function CapacityInsightsPage() {
       const currentSorted = [...currentSelectedLobs].sort().join(',');
       const newDefaultSorted = [...newDefaultSelectedLobs].sort().join(',');
       
-      // Only update if the effective BU change results in a different default LOB set.
-      // This helps preserve user's LOB selection if they switch BU and then switch back
-      // without the underlying default LOBs for the original BU having changed.
-      // However, the primary driver is usually: if selectedBusinessUnit changes, reset LOBs to its default.
-      // For simplicity and directness, we might just always set the newDefaultSelectedLobs.
-      // Let's stick to setting the new default for clarity upon BU change.
-      if (currentSorted !== newDefaultSorted) { // A simple check, could be more nuanced
+      if (selectedBusinessUnit === "WFS" || currentSorted !== newDefaultSorted) {
           return newDefaultSelectedLobs;
       }
-      // If BU has changed, always update to the new default LOBs for that BU
-      return newDefaultSelectedLobs; 
+      return currentSelectedLobs; 
     });
 
     setFilterOptions(prev => {
@@ -1963,7 +1908,7 @@ export default function CapacityInsightsPage() {
         return isAfter(periodEndDate, addDays(userRangeStart, -1)) && isBefore(periodStartDate, addDays(userRangeEnd, 1));
       });
     } else { 
-      periodsToDisplayCurrently = sourcePeriods.slice(0, NUM_PERIODS_DISPLAYED);
+      periodsToDisplayCurrently = sourcePeriods.slice(0, NUM_PERIODS_DISPLAYED); // Fallback, NUM_PERIODS_DISPLAYED should be large
     }
     
     setDisplayedPeriodHeaders(periodsToDisplayCurrently);
@@ -2001,7 +1946,6 @@ export default function CapacityInsightsPage() {
             } else { 
                 lobCalculatedBaseRequiredMinutes[period] = lobRawEntry.lobTotalBaseRequiredMinutes?.[period] ?? 0; 
             }
-            // Ensure lobTotalBaseRequiredMinutes on raw entry is updated if calculated
             if (!lobRawEntry.lobTotalBaseRequiredMinutes) lobRawEntry.lobTotalBaseRequiredMinutes = {};
             lobRawEntry.lobTotalBaseRequiredMinutes[period] = lobCalculatedBaseRequiredMinutes[period]; 
         });
@@ -2110,7 +2054,6 @@ export default function CapacityInsightsPage() {
     setExpandedItems(prev => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
-  // Effect for scroll synchronization
   useEffect(() => {
     const headerScroller = headerPeriodScrollerRef.current;
     const bodyScroller = tableBodyScrollRef.current;
@@ -2121,11 +2064,9 @@ export default function CapacityInsightsPage() {
       if (isSyncingScroll.current) return;
       isSyncingScroll.current = true;
       target.scrollLeft = source.scrollLeft;
-      // Timeout to release the lock after ensuring the other scroller has caught up
-      // and to prevent immediate re-triggering from the target's own scroll event.
-      setTimeout(() => {
+      requestAnimationFrame(() => { // Use requestAnimationFrame for smoother sync
         isSyncingScroll.current = false;
-      }, 50); // Adjust delay as needed, might need to be very small or even 0
+      });
     };
 
     const handleHeaderScroll = () => syncScroll(headerScroller, bodyScroller);
@@ -2138,7 +2079,7 @@ export default function CapacityInsightsPage() {
       headerScroller.removeEventListener('scroll', handleHeaderScroll);
       bodyScroller.removeEventListener('scroll', handleBodyScroll);
     };
-  }, []); // Empty dependency array: refs should be stable after first render.
+  }, []);
 
 
   return (
@@ -2156,13 +2097,12 @@ export default function CapacityInsightsPage() {
         allAvailablePeriods={selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS}
         displayedPeriodHeaders={displayedPeriodHeaders}
         activeHierarchyContext={activeHierarchyContext}
-        // Pass the ref to HeaderSection
-        // headerPeriodScrollerRef={headerPeriodScrollerRef} // This ref is now internal to HeaderSection
+        headerPeriodScrollerRef={headerPeriodScrollerRef}
       />
-      <main className="flex-grow p-4 overflow-auto"> {/* This is the main vertical scroll for table content */}
+      <main className="flex-grow p-4 overflow-auto">
         <CapacityTable
           data={displayableCapacityData}
-          periodHeaders={displayedPeriodHeaders} /* This prop might be redundant if HeaderSection handles display */
+          periodHeaders={displayedPeriodHeaders} 
           expandedItems={expandedItems}
           toggleExpand={toggleExpand}
           teamMetricDefinitions={TEAM_METRIC_ROW_DEFINITIONS}
@@ -2173,7 +2113,7 @@ export default function CapacityInsightsPage() {
           onSetEditingCell={handleSetEditingCell}
           selectedTimeInterval={selectedTimeInterval}
           onActiveHierarchyChange={handleActiveHierarchyChange}
-          tableBodyScrollRef={tableBodyScrollRef} // Pass the ref to CapacityTable
+          tableBodyScrollRef={tableBodyScrollRef}
         />
       </main>
     </div>
