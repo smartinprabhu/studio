@@ -107,7 +107,7 @@ const generateFiscalWeekHeaders = (startFiscalYear: number, numTotalWeeks: numbe
 
   for (let i = 0; i < numTotalWeeks; i++) {
     const weekStartDate = new Date(fiscalYearActualStartDate);
-    weekStartDate.setUTCDate(weekStartDate.getUTCDate() + i * 7);
+    weekStartDate.setUTCDate(fiscalYearActualStartDate.getUTCDate() + i * 7);
 
     const weekEndDate = new Date(weekStartDate);
     weekEndDate.setUTCDate(weekStartDate.getUTCDate() + 6);
@@ -504,7 +504,7 @@ const getHeaderDateRange = (header: string, interval: TimeInterval): { startDate
 
 const getDefaultDateRange = (interval: TimeInterval): DateRange => {
   const headers = interval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-  const numPeriodsToDefault = interval === "Week" ? 11 : 2; 
+  const numPeriodsToDefault = interval === "Week" ? 11 : 2; // Approx 12 weeks or 3 months
 
   if (headers.length === 0) return { from: undefined, to: undefined };
 
@@ -689,7 +689,7 @@ function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps
     if (typeof window !== 'undefined' && date?.from) { 
         const fromDateObj = date.from;
         const fromFiscalWeekInfo = findFiscalWeekHeaderForDate(fromDateObj, ALL_WEEKS_HEADERS);
-        const fromFiscalWeekLabel = fromFiscalWeekInfo ? fromFiscalWeekInfo.split(':')[0] : `W${getWeek(fromDateObj, { weekStartsOn: 1 })}`;
+        const fromFiscalWeekLabel = fromFiscalWeekInfo ? fromFiscalWeekInfo.split(':')[0].replace("FWk","W") : `W${getWeek(fromDateObj, { weekStartsOn: 1 })}`;
         
         const formattedFromDate = `${String(fromDateObj.getUTCDate()).padStart(2, '0')}/${String(fromDateObj.getUTCMonth() + 1).padStart(2, '0')}/${fromDateObj.getUTCFullYear()}`;
         
@@ -698,7 +698,7 @@ function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps
         if (date.to) {
             const toDateObj = date.to;
             const toFiscalWeekInfo = findFiscalWeekHeaderForDate(toDateObj, ALL_WEEKS_HEADERS);
-            const toFiscalWeekLabel = toFiscalWeekInfo ? toFiscalWeekInfo.split(':')[0] : `W${getWeek(toDateObj, { weekStartsOn: 1 })}`;
+            const toFiscalWeekLabel = toFiscalWeekInfo ? toFiscalWeekInfo.split(':')[0].replace("FWk","W") : `W${getWeek(toDateObj, { weekStartsOn: 1 })}`;
             const formattedToDate = `${String(toDateObj.getUTCDate()).padStart(2, '0')}/${String(toDateObj.getUTCMonth() + 1).padStart(2, '0')}/${toDateObj.getUTCFullYear()}`;
             
             const fromWeekStartForLabel = startOfWeek(fromDateObj, {weekStartsOn: 1});
@@ -925,7 +925,7 @@ function HeaderSection({
                 return (
                   <div
                     key={period}
-                    className="text-right min-w-[100px] px-2 py-2 border-l border-border h-full flex flex-col justify-center items-end"
+                    className="text-right min-w-[100px] px-2 py-2 border-l border-border/50 h-full flex flex-col justify-center items-end"
                   >
                     <span className="text-sm font-medium text-foreground">{weekLabelPart}</span>
                     {dateRangePart && (
@@ -1315,7 +1315,7 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
           </TooltipTrigger>
           {metricDef.description && (
           <TooltipContent className="whitespace-pre-wrap text-xs max-w-xs">
-            <p>{metricDef.description}</p>
+             <p>{metricDef.label}</p> {/* Removed description from here */}
           </TooltipContent>
           )}
         </Tooltip>
@@ -1338,7 +1338,7 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
         return (
           <TableCell
             key={`${item.id}-${metricDef.key}-${periodHeader}`}
-            className={`text-right tabular-nums ${cellTextColor} py-2 px-2 min-w-[100px]`}
+            className={`text-right tabular-nums ${cellTextColor} py-2 px-2 min-w-[100px] border-l border-border/50`}
           >
             <MetricCellContent
                 item={item}
@@ -1473,7 +1473,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
               Assumptions
             </div>
           </TableCell>
-          {periodHeaders.map(ph => <TableCell key={`${assumptionsKey}-${ph}-placeholder`} className="py-2"></TableCell>)}
+          {periodHeaders.map(ph => <TableCell key={`${assumptionsKey}-${ph}-placeholder`} className="py-2 border-l border-border/50"></TableCell>)}
         </TableRow>
       );
       if (areAssumptionsExpanded) {
@@ -1494,7 +1494,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
               HC Adjustments
             </div>
           </TableCell>
-          {periodHeaders.map(ph => <TableCell key={`${hcAdjustmentsKey}-${ph}-placeholder`} className="py-2"></TableCell>)}
+          {periodHeaders.map(ph => <TableCell key={`${hcAdjustmentsKey}-${ph}-placeholder`} className="py-2 border-l border-border/50"></TableCell>)}
         </TableRow>
       );
       if (areHcAdjustmentsExpanded) {
@@ -1507,7 +1507,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
           return; 
         }
         if (item.itemType === 'LOB' && metricDef.key === 'lobTotalBaseRequiredMinutes') {
-            return;
+            return; // Already handled, we don't want to show this for LOBs.
         }
         rows.push(
           <MetricRow
@@ -1592,7 +1592,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
         {periodHeaders.map((ph, idx) => (
           <TableCell
             key={`${item.id}-${ph}-nameplaceholder`}
-            className={cn(rowSpecificBgClass, 'py-3 min-w-[100px]')}
+            className={cn(rowSpecificBgClass, 'py-3 min-w-[100px] border-l border-border/50')}
           ></TableCell>
         ))}
       </TableRow>
@@ -1612,6 +1612,9 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
         rows.push(...teamMetricStructure);
       }
     } else if (!isItemExpandable && (item.itemType === 'BU' || item.itemType === 'LOB')) { 
+      // This case is for LOBs that have no teams but still need to show their aggregated metrics
+      // Or BUs with no LOBs (though current logic filters them out earlier)
+      // Team items are always expandable now
       const itemMetricRows = renderCapacityItemContent(item);
       rows.push(...itemMetricRows);
     }
@@ -1625,6 +1628,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
     <TooltipProvider delayDuration={300}>
       <div ref={tableBodyScrollRef} className="overflow-x-auto relative">
         <Table className="min-w-full">
+          {/* TableHeader removed from here */}
           <TableBody>
             {data.length > 0 ? (
               data.flatMap(item => renderTableItem(item))
@@ -1842,7 +1846,24 @@ export default function CapacityInsightsPage() {
 
   const handleBusinessUnitChange = useCallback((bu: BusinessUnitName) => {
     setSelectedBusinessUnit(bu);
-  }, []); 
+    // Logic to update selected LOBs and filterOptions.linesOfBusiness when BU changes
+    const newBuConfig = BUSINESS_UNIT_CONFIG[bu];
+    const allLobsForNewBu = [...newBuConfig.lonsOfBusiness];
+    let newDefaultSelectedLobs: string[];
+
+    if (bu === "WFS") {
+      newDefaultSelectedLobs = defaultWFSLoBs.filter(lob => 
+        allLobsForNewBu.includes(lob as LineOfBusinessName<"WFS">)
+      );
+    } else {
+      newDefaultSelectedLobs = [...allLobsForNewBu];
+    }
+    setSelectedLineOfBusiness(newDefaultSelectedLobs);
+    setFilterOptions(prev => ({
+      ...prev,
+      linesOfBusiness: allLobsForNewBu
+    }));
+  }, [defaultWFSLoBs]); 
 
   const handleLOBChange = useCallback((lobs: string[]) => {
       setSelectedLineOfBusiness(lobs);
@@ -1862,30 +1883,28 @@ export default function CapacityInsightsPage() {
         newDefaultSelectedLobs = defaultWFSLoBs.filter(lob => 
             allLobsForNewBu.includes(lob as LineOfBusinessName<"WFS">)
         );
+         // Ensure the state is updated if the default WFS LOBs are different from current
+        setSelectedLineOfBusiness(currentSelectedLobs => {
+            const currentSorted = [...currentSelectedLobs].sort().join(',');
+            const newDefaultSorted = [...newDefaultSelectedLobs].sort().join(',');
+            if (currentSorted !== newDefaultSorted) {
+                return newDefaultSelectedLobs;
+            }
+            return currentSelectedLobs;
+        });
     } else {
         newDefaultSelectedLobs = [...allLobsForNewBu];
+        setSelectedLineOfBusiness(newDefaultSelectedLobs); // Always set all LOBs for non-WFS BUs
     }
     
-    setSelectedLineOfBusiness(currentSelectedLobs => {
-      const currentSorted = [...currentSelectedLobs].sort().join(',');
-      const newDefaultSorted = [...newDefaultSelectedLobs].sort().join(',');
-      
-      if (currentSorted !== newDefaultSorted) {
-          return newDefaultSelectedLobs;
-      }
-      return currentSelectedLobs; 
-    });
-
     setFilterOptions(prev => {
         const newLinesOfBusinessForFilter = [...allLobsForNewBu];
-        const newBusinessUnitsForFilter = [...ALL_BUSINESS_UNITS];
+        const currentLinesOfBusinessForFilterSorted = [...prev.linesOfBusiness].sort().join(',');
+        const newLinesOfBusinessForFilterSorted = [...newLinesOfBusinessForFilter].sort().join(',');
 
-        const lobsForFilterAreEqual = prev.linesOfBusiness.length === newLinesOfBusinessForFilter.length && 
-                                  prev.linesOfBusiness.every(lob => newLinesOfBusinessForFilter.includes(lob));
-        
-        if (!lobsForFilterAreEqual || prev.businessUnits.join(',') !== newBusinessUnitsForFilter.join(',')) {
+        if (currentLinesOfBusinessForFilterSorted !== newLinesOfBusinessForFilterSorted || prev.businessUnits.join(',') !== ALL_BUSINESS_UNITS.join(',')) {
             return { 
-                businessUnits: newBusinessUnitsForFilter, 
+                businessUnits: [...ALL_BUSINESS_UNITS], 
                 linesOfBusiness: newLinesOfBusinessForFilter 
             };
         }
@@ -1909,7 +1928,7 @@ export default function CapacityInsightsPage() {
         return isAfter(periodEndDate, addDays(userRangeStart, -1)) && isBefore(periodStartDate, addDays(userRangeEnd, 1));
       });
     } else { 
-      periodsToDisplayCurrently = sourcePeriods.slice(0, 60);
+      periodsToDisplayCurrently = sourcePeriods.slice(0, 60); // Fallback if no date range selected
     }
     
     setDisplayedPeriodHeaders(periodsToDisplayCurrently);
