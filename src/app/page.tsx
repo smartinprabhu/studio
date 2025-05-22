@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -24,9 +24,21 @@ import {
   addWeeks,
   isSameDay,
 } from 'date-fns';
-import type { DateRange } from "react-day-picker";
+import "./globals.css"
+import {
 
+
+  addYears,
+  subYears,
+
+} from "date-fns";
+import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
+
+import {  ChevronLeft, ChevronRight } from "lucide-react";
+
+
+
 import {
   Dialog,
   DialogContent,
@@ -83,6 +95,34 @@ import { cn } from "@/lib/utils";
 import { suggestLoBGroupings, SuggestLoBGroupingsOutput } from "@/ai/flows/suggest-lob-groupings";
 import ThemeSelector from "./ThemeSelector";
 
+import {
+
+  format,
+  parse,
+  addMonths,
+  subMonths,
+} from "date-fns";
+
+import {
+
+  isWithinInterval,
+  startOfDay,
+  endOfDay,
+} from "date-fns";
+import type {  DayPickerProps } from "react-day-picker";
+
+
+const throttle = (func: (...args: any[]) => void, wait: number) => {
+  let timeout: NodeJS.Timeout | null = null;
+  return (...args: any[]) => {
+    if (!timeout) {
+      timeout = setTimeout(() => {
+        func(...args);
+        timeout = null;
+      }, wait);
+    }
+  };
+};
 
 // --- BEGIN CONSOLIDATED TYPES ---
 
@@ -498,7 +538,7 @@ const getHeaderDateRange = (header: string, interval: TimeInterval): { startDate
 
 const getDefaultDateRange = (interval: TimeInterval): DateRange => {
   const headers = interval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-  const numPeriodsToDefault = interval === "Week" ? 11 : 2; // Approx 12 weeks or 3 months
+  const numPeriodsToDefault = interval === "Week" ? 51 : 2; // Approx 52 weeks or 3 months
 
   if (headers.length === 0) return { from: undefined, to: undefined };
 
@@ -666,57 +706,145 @@ function AiGroupingDialog({ open, onOpenChange }: AiGroupingDialogProps) {
     </Dialog>
   );
 }
-// --- END AiGroupingDialog COMPONENT ---
 
-// --- BEGIN DateRangePicker COMPONENT ---
+// --- END AiGroupingDialog COMPONENT ---
 interface DateRangePickerProps extends React.HTMLAttributes<HTMLDivElement> {
-  date: DateRange | undefined
-  onDateChange: (date: DateRange | undefined) => void
-  className?: string
+  date: DateRange | undefined;
+  onDateChange: (date: DateRange | undefined) => void;
+  className?: string;
 }
+
+// Custom Caption Component for Calendar Header
+interface CustomCaptionProps {
+  displayMonth: Date;
+  onMonthChange: (newMonth: Date) => void;
+}
+
+const CustomCaption: React.FC<CustomCaptionProps> = ({ displayMonth, onMonthChange }) => {
+  const monthName = displayMonth.toLocaleString("default", { month: "long" });
+  const year = displayMonth.getFullYear();
+
+  return (
+    <div className="flex items-center justify-between px-2 py-1">
+      {/* Month Navigation */}
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          onClick={() => onMonthChange(subMonths(displayMonth, 1))}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-sm font-medium">{monthName}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          onClick={() => onMonthChange(addMonths(displayMonth, 1))}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Year Navigation */}
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          onClick={() => onMonthChange(subYears(displayMonth, 1))}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-sm font-medium">{year}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          onClick={() => onMonthChange(addYears(displayMonth, 1))}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+};
 
 function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps) {
   const [clientButtonText, setClientButtonText] = useState("Loading...");
+  const [displayMonths, setDisplayMonths] = useState<Date[]>([]);
 
   useEffect(() => {
     let newButtonText = "Pick a date range";
-    if (typeof window !== 'undefined' && date?.from) {
-        const fromDateObj = date.from;
-        const fromFiscalWeekInfo = findFiscalWeekHeaderForDate(fromDateObj, ALL_WEEKS_HEADERS);
-        const fromFiscalWeekLabel = fromFiscalWeekInfo ? fromFiscalWeekInfo.split(':')[0].replace("FWk","W") : `W${getWeek(fromDateObj, { weekStartsOn: 1 })}`;
+    if (typeof window !== "undefined" && date?.from) {
+      const fromDateObj = date.from;
+      const fromFiscalWeekInfo = findFiscalWeekHeaderForDate(fromDateObj, ALL_WEEKS_HEADERS);
+      const fromFiscalWeekLabel = fromFiscalWeekInfo
+        ? fromFiscalWeekInfo.split(":")[0].replace("FWk", "W")
+        : `W${getWeek(fromDateObj, { weekStartsOn: 1 })}`;
 
-        const formattedFromDate = `${String(fromDateObj.getUTCDate()).padStart(2, '0')}/${String(fromDateObj.getUTCMonth() + 1).padStart(2, '0')}/${fromDateObj.getUTCFullYear()}`;
+      const formattedFromDate = `${String(fromDateObj.getUTCDate()).padStart(2, "0")}/${String(fromDateObj.getUTCMonth() + 1).padStart(2, "0")}/${fromDateObj.getUTCFullYear()}`;
 
-        newButtonText = `${fromFiscalWeekLabel} (${formattedFromDate})`;
+      newButtonText = `${fromFiscalWeekLabel} (${formattedFromDate})`;
 
-        if (date.to) {
-            const toDateObj = date.to;
-            const toFiscalWeekInfo = findFiscalWeekHeaderForDate(toDateObj, ALL_WEEKS_HEADERS);
-            const toFiscalWeekLabel = toFiscalWeekInfo ? toFiscalWeekInfo.split(':')[0].replace("FWk","W") : `W${getWeek(toDateObj, { weekStartsOn: 1 })}`;
-            const formattedToDate = `${String(toDateObj.getUTCDate()).padStart(2, '0')}/${String(toDateObj.getUTCMonth() + 1).padStart(2, '0')}/${toDateObj.getUTCFullYear()}`;
+      if (date.to) {
+        const toDateObj = date.to;
+        const toFiscalWeekInfo = findFiscalWeekHeaderForDate(toDateObj, ALL_WEEKS_HEADERS);
+        const toFiscalWeekLabel = toFiscalWeekInfo
+          ? toFiscalWeekInfo.split(":")[0].replace("FWk", "W")
+          : `W${getWeek(toDateObj, { weekStartsOn: 1 })}`;
+        const formattedToDate = `${String(toDateObj.getUTCDate()).padStart(2, "0")}/${String(toDateObj.getUTCMonth() + 1).padStart(2, "0")}/${toDateObj.getUTCFullYear()}`;
 
-            const fromWeekStartForLabel = startOfWeek(fromDateObj, {weekStartsOn: 1});
-            const toWeekStartForLabel = startOfWeek(toDateObj, {weekStartsOn: 1});
+        const fromWeekStartForLabel = startOfWeek(fromDateObj, { weekStartsOn: 1 });
+        const toWeekStartForLabel = startOfWeek(toDateObj, { weekStartsOn: 1 });
 
-            if (!isSameDay(fromWeekStartForLabel, toWeekStartForLabel)) {
-                newButtonText += ` - ${toFiscalWeekLabel} (${formattedToDate})`;
-            }
+        if (!isSameDay(fromWeekStartForLabel, toWeekStartForLabel)) {
+          newButtonText += ` - ${toFiscalWeekLabel} (${formattedToDate})`;
         }
+      }
     }
     setClientButtonText(newButtonText);
   }, [date]);
 
-  const yearsInHeaders = useMemo(() =>
-    [...new Set(ALL_WEEKS_HEADERS.map(h => {
-      const match = h.match(/\((\d{4})\)$/);
-      return match ? parseInt(match[1]) : 0;
-    }).filter(y => y > 0))]
-  , []);
+  const yearsInHeaders = useMemo(
+    () =>
+      [
+        ...new Set(
+          ALL_WEEKS_HEADERS.map((h) => {
+            const match = h.match(/\((\d{4})\)$/);
+            return match ? parseInt(match[1]) : 0;
+          }).filter((y) => y > 0)
+        ),
+      ],
+    []
+  );
 
   const minYear = yearsInHeaders.length > 0 ? Math.min(...yearsInHeaders) : new Date().getUTCFullYear();
   const maxYear = yearsInHeaders.length > 0 ? Math.max(...yearsInHeaders) : new Date().getUTCFullYear() + 1;
 
   const defaultCalendarMonth = date?.from instanceof Date ? date.from : new Date(Date.UTC(minYear, 0, 1));
+
+  // Initialize display months for two calendars
+  useEffect(() => {
+    const firstMonth = defaultCalendarMonth;
+    const secondMonth = addMonths(firstMonth, 1);
+    setDisplayMonths([firstMonth, secondMonth]);
+  }, [defaultCalendarMonth]);
+
+  const handleMonthChange = (index: number) => (newMonth: Date) => {
+    const newDisplayMonths = [...displayMonths];
+    newDisplayMonths[index] = newMonth;
+
+    // Ensure the second month is always after the first
+    if (index === 0 && newDisplayMonths[1] <= newMonth) {
+      newDisplayMonths[1] = addMonths(newMonth, 1);
+    } else if (index === 1 && newDisplayMonths[0] >= newMonth) {
+      newDisplayMonths[0] = subMonths(newMonth, 1);
+    }
+
+    setDisplayMonths(newDisplayMonths);
+  };
 
   return (
     <div className={cn("grid gap-2", className)}>
@@ -735,45 +863,58 @@ function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            initialFocus
-            mode="range"
-            weekStartsOn={1}
-            captionLayout="dropdown-buttons"
-            fromYear={minYear}
-            toYear={maxYear}
-            defaultMonth={defaultCalendarMonth}
-            selected={date}
-            onSelect={(range: DateRange | undefined) => {
-              let newFrom = range?.from;
-              let newTo = range?.to;
+          <div className="flex">
+            {displayMonths.map((month, index) => (
+              <Calendar
+                key={index}
+                initialFocus={index === 0}
+                mode="range"
+                weekStartsOn={1}
+                month={month}
+                onMonthChange={handleMonthChange(index)}
+                components={{
+                  Caption: (props) => (
+                    <CustomCaption
+                      displayMonth={props.displayMonth}
+                      onMonthChange={handleMonthChange(index)}
+                    />
+                  ),
+                }}
+                fromYear={minYear}
+                toYear={maxYear}
+                selected={date}
+                onSelect={(range: DateRange | undefined) => {
+                  let newFrom = range?.from;
+                  let newTo = range?.to;
 
-              if (newFrom) {
-                newFrom = startOfWeek(newFrom, { weekStartsOn: 1 });
-              }
-              if (newTo) {
-                newTo = endOfWeek(newTo, { weekStartsOn: 1 });
-              }
+                  if (newFrom) {
+                    newFrom = startOfWeek(newFrom, { weekStartsOn: 1 });
+                  }
+                  if (newTo) {
+                    newTo = endOfWeek(newTo, { weekStartsOn: 1 });
+                  }
 
-              if (newFrom && newTo && isBefore(newTo, newFrom)) {
-                newTo = endOfWeek(newFrom, {weekStartsOn: 1});
-              }
+                  if (newFrom && newTo && newTo < newFrom) {
+                    newTo = endOfWeek(newFrom, { weekStartsOn: 1 });
+                  }
 
-              const processedRange: DateRange | undefined = newFrom
-                ? { from: newFrom, to: newTo || endOfWeek(newFrom, {weekStartsOn: 1}) }
-                : undefined;
-              onDateChange(processedRange);
-            }}
-            numberOfMonths={2}
-          />
+                  const processedRange: DateRange | undefined = newFrom
+                    ? { from: newFrom, to: newTo || endOfWeek(newFrom, { weekStartsOn: 1 }) }
+                    : undefined;
+                  onDateChange(processedRange);
+                }}
+                numberOfMonths={1} // Each calendar shows one month
+              />
+            ))}
+          </div>
         </PopoverContent>
       </Popover>
     </div>
-  )
-}
-// --- END DateRangePicker COMPONENT ---
+  );
+}// --- BEGIN HeaderSection COMPONENT ---
 
 // --- BEGIN HeaderSection COMPONENT ---
+
 function HeaderSection({
   filterOptions,
   selectedBusinessUnit,
@@ -784,10 +925,10 @@ function HeaderSection({
   onSelectTimeInterval,
   selectedDateRange,
   onSelectDateRange,
-  allAvailablePeriods, // Kept for DateRangePicker if it needs the full list for validation/display
-  displayedPeriodHeaders, // This will be used to render the week headers
-  activeHierarchyContext, // This is the "BU: WFS" or similar string
-  headerPeriodScrollerRef, // Ref for the scrollable div containing period headers
+  allAvailablePeriods,
+  displayedPeriodHeaders,
+  activeHierarchyContext,
+  headerPeriodScrollerRef,
 }: HeaderSectionProps) {
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
 
@@ -819,7 +960,7 @@ function HeaderSection({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="sm">
-                  <Download className="mr-2" /> Export 
+                  <Download className="mr-2" /> Export
                 </Button>
               </TooltipTrigger>
               <TooltipContent><p>Export current view as CSV (not implemented)</p></TooltipContent>
@@ -1294,11 +1435,10 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
         <div
           style={{ paddingLeft: `${level * 1.5 + 0.5}rem` }}
           className="flex items-center gap-2 cursor-default w-full max-w-full overflow-hidden"
-          title={metricDef.label}
         >
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex items-center gap-2 cursor-default">
+              <div className="flex items-center gap-2 cursor-default" title={metricDef.description}>
                 <span>{metricDef.label}</span>
                 {item.itemType === 'Team' && metricDef.isEditableForTeam && !metricDef.isDisplayOnly &&
                 (metricDef.category === 'Assumption' || metricDef.category === 'PrimaryHC' || metricDef.category === 'HCAdjustment') &&
@@ -1307,7 +1447,7 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
             </TooltipTrigger>
             {metricDef.description && (
               <TooltipContent className="whitespace-pre-wrap text-xs max-w-xs">
-                <p>{metricDef.label}</p>
+                <p>{metricDef.description}</p>
               </TooltipContent>
             )}
           </Tooltip>
@@ -1518,103 +1658,109 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
     }
     return rows;
   }, [periodHeaders, expandedItems, toggleExpand, onTeamMetricChange, onLobMetricChange, editingCell, onSetEditingCell, selectedTimeInterval, renderTeamMetrics]);
+const renderTableItem = useCallback((item: CapacityDataRow): React.ReactNode[] => {
+  const rows: React.ReactNode[] = [];
+  const isExpanded = expandedItems[item.id] || false;
 
-  const renderTableItem = useCallback((item: CapacityDataRow): React.ReactNode[] => {
-    const rows: React.ReactNode[] = [];
-    const isExpanded = expandedItems[item.id] || false;
+  let isItemExpandable = (item.children && item.children.length > 0) || item.itemType === 'Team';
 
-    let isItemExpandable = (item.children && item.children.length > 0) || item.itemType === 'Team';
+  let rowSpecificBgClass = '';
+  let buttonTextClass = 'text-foreground';
+  let itemZIndex = 20;
 
-    let rowSpecificBgClass = '';
-    let buttonTextClass = 'text-foreground';
-    let itemZIndex = 20;
+  // Define different background classes based on item type
+  if (item.itemType === 'BU') {
+    rowSpecificBgClass = 'bg-secondary';
+    buttonTextClass = 'text-secondary-foreground';
+    itemZIndex = 35;
+  } else if (item.itemType === 'LOB') {
+    rowSpecificBgClass = 'bg-muted';
+    buttonTextClass = 'text-muted-foreground';
+    itemZIndex = 30;
+  } else if (item.itemType === 'Team') {
+    rowSpecificBgClass = 'bg-muted/50';
+    buttonTextClass = 'text-foreground';
+    itemZIndex = 25;
+  }
 
-    if (item.itemType === 'BU') {
-      rowSpecificBgClass = 'bg-secondary';
-      buttonTextClass = 'text-secondary-foreground';
-      itemZIndex = 35;
-    } else if (item.itemType === 'LOB') {
-      rowSpecificBgClass = 'bg-muted';
-      buttonTextClass = 'text-muted-foreground';
-      itemZIndex = 30;
-    } else if (item.itemType === 'Team') {
-      rowSpecificBgClass = 'bg-muted/50';
-      buttonTextClass = 'text-foreground';
-      itemZIndex = 25;
-    }
+  // Define different background classes for Assumptions and Adjustments
+  const assumptionsKey = `${item.id}_Assumptions`;
+  const areAssumptionsExpanded = expandedItems[assumptionsKey] || false;
+  const hcAdjustmentsKey = `${item.id}_HCAdjustments`;
+  const areHcAdjustmentsExpanded = expandedItems[hcAdjustmentsKey] || false;
 
-    const hoverClass = item.itemType !== 'BU' ? 'hover:bg-muted/70' : 'hover:bg-secondary/80';
+  const assumptionsRowClass = 'bg-assumptions'; // Define this class in your CSS
+  const adjustmentsRowClass = 'bg-adjustments'; // Define this class in your CSS
 
-    rows.push(
-      <TableRow
-        key={`${item.id}-name`}
-        className={cn(rowSpecificBgClass, hoverClass)}
-        ref={el => { if (el) itemNameRowRefs.current.set(item.id, el); else itemNameRowRefs.current.delete(item.id); }}
-        data-item-id={item.id}
-        data-item-name={item.name}
-        data-item-type={item.itemType}
-        data-item-level={item.level}
+  const hoverClass = item.itemType !== 'BU' ? 'hover:bg-muted/70' : 'hover:bg-secondary/80';
+
+  rows.push(
+    <TableRow
+      key={`${item.id}-name`}
+      className={cn(rowSpecificBgClass, hoverClass)}
+      ref={el => { if (el) itemNameRowRefs.current.set(item.id, el); else itemNameRowRefs.current.delete(item.id); }}
+      data-item-id={item.id}
+      data-item-name={item.name}
+      data-item-type={item.itemType}
+      data-item-level={item.level}
+    >
+      <TableCell
+        className={cn(
+          "p-0 sticky left-0 whitespace-nowrap",
+          rowSpecificBgClass || 'bg-card'
+        )}
+        style={{
+          zIndex: itemZIndex,
+          width: '400px',
+          minWidth: '335px',
+          paddingLeft: `${Math.min(item.level, 5) * 1.5 + 0.5}rem`,
+          paddingRight: '1rem'
+        }}
       >
-        <TableCell
+        <button
+          onClick={isItemExpandable ? () => toggleExpand(item.id) : undefined}
+          disabled={!isItemExpandable}
           className={cn(
-            "p-0 sticky left-0 whitespace-nowrap",
-            rowSpecificBgClass || 'bg-card'
+            "py-3 px-2 font-semibold hover:no-underline w-full text-left flex items-center gap-2",
+            buttonTextClass
           )}
-          style={{
-            zIndex: itemZIndex,
-            width: '400px', // Set a fixed width for the first column
-            minWidth: '335px', // Ensure the minimum width is also set
-            paddingLeft: `${Math.min(item.level, 5) * 1.5 + 0.5}rem`, // Adjust padding for nested levels
-            paddingRight: '1rem'
-          }}
+          aria-expanded={isItemExpandable ? isExpanded : undefined}
         >
-          <button
-            onClick={isItemExpandable ? () => toggleExpand(item.id) : undefined}
-            disabled={!isItemExpandable}
-            className={cn(
-              "py-3 px-2 font-semibold hover:no-underline w-full text-left flex items-center gap-2",
-              buttonTextClass
-            )}
-            aria-expanded={isItemExpandable ? isExpanded : undefined}
-          >
-            {isItemExpandable && (
-              <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
-            )}
-            {item.name}
-          </button>
-        </TableCell>
-        {periodHeaders.map((ph, idx) => (
-          <TableCell
-            key={`${item.id}-${ph}-nameplaceholder`}
-            className={cn(rowSpecificBgClass, 'py-3 min-w-[100px] border-l border-border/50')}
-          ></TableCell>
-        ))}
-      </TableRow>
-    );
+          {isItemExpandable && (
+            <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+          )}
+          {item.name}
+        </button>
+      </TableCell>
+      {periodHeaders.map((ph, idx) => (
+        <TableCell
+          key={`${item.id}-${ph}-nameplaceholder`}
+          className={cn(rowSpecificBgClass, 'py-3 min-w-[100px] border-l border-border/50')}
+        ></TableCell>
+      ))}
+    </TableRow>
+  );
 
-    if (isExpanded) {
-      if (item.itemType === 'BU' || item.itemType === 'LOB') {
-        const aggregatedMetricRows = renderCapacityItemContent(item);
-        rows.push(...aggregatedMetricRows);
-        if (item.children && item.children.length > 0) {
-          item.children.forEach(child => {
-            rows.push(...renderTableItem(child));
-          });
-        }
-      } else if (item.itemType === 'Team') {
-        const teamMetricStructure = renderCapacityItemContent(item);
-        rows.push(...teamMetricStructure);
+  if (isExpanded) {
+    if (item.itemType === 'BU' || item.itemType === 'LOB') {
+      const aggregatedMetricRows = renderCapacityItemContent(item);
+      rows.push(...aggregatedMetricRows);
+      if (item.children && item.children.length > 0) {
+        item.children.forEach(child => {
+          rows.push(...renderTableItem(child));
+        });
       }
-    } else if (!isItemExpandable && (item.itemType === 'BU' || item.itemType === 'LOB')) {
-      // This case is for LOBs that have no teams but still need to show their aggregated metrics
-      // Or BUs with no LOBs (though current logic filters them out earlier)
-      // Team items are always expandable now
-      const itemMetricRows = renderCapacityItemContent(item);
-      rows.push(...itemMetricRows);
+    } else if (item.itemType === 'Team') {
+      const teamMetricStructure = renderCapacityItemContent(item);
+      rows.push(...teamMetricStructure);
     }
+  } else if (!isItemExpandable && (item.itemType === 'BU' || item.itemType === 'LOB')) {
+    const itemMetricRows = renderCapacityItemContent(item);
+    rows.push(...itemMetricRows);
+  }
 
-    return rows;
-  }, [expandedItems, periodHeaders, toggleExpand, renderCapacityItemContent]);
+  return rows;
+}, [expandedItems, periodHeaders, toggleExpand, renderCapacityItemContent]);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -1691,7 +1837,6 @@ export default function CapacityInsightsPage() {
   const headerPeriodScrollerRef = useRef<HTMLDivElement>(null);
   const tableBodyScrollRef = useRef<HTMLDivElement>(null);
   const isSyncingScroll = useRef(false);
-
 
 
   const handleActiveHierarchyChange = useCallback((newContext: string | null) => {
@@ -1910,157 +2055,161 @@ export default function CapacityInsightsPage() {
     });
   }, [selectedBusinessUnit, defaultWFSLoBs]);
 
-  const processDataForTable = useCallback(() => {
-    const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-    let periodsToDisplayCurrently: string[] = [];
+const processDataForTable = useCallback(() => {
+  const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
+  let periodsToDisplayCurrently: string[] = [];
 
-    if (selectedDateRange?.from) {
-      const userRangeStart = selectedDateRange.from;
-      const userRangeEnd = selectedDateRange.to || userRangeStart;
+  if (selectedDateRange?.from) {
+    const userRangeStart = selectedDateRange.from;
+    const userRangeEnd = selectedDateRange.to || userRangeStart;
 
-      periodsToDisplayCurrently = sourcePeriods.filter(periodHeaderStr => {
-        const { startDate: periodStartDate, endDate: periodEndDate } = getHeaderDateRange(periodHeaderStr, selectedTimeInterval);
-        if (!periodStartDate || !periodEndDate) return false;
+    periodsToDisplayCurrently = sourcePeriods.filter(periodHeaderStr => {
+      const { startDate: periodStartDate, endDate: periodEndDate } = getHeaderDateRange(periodHeaderStr, selectedTimeInterval);
+      if (!periodStartDate || !periodEndDate) return false;
 
-        return isAfter(periodEndDate, addDays(userRangeStart, -1)) && isBefore(periodStartDate, addDays(userRangeEnd, 1));
-      });
-    } else {
-      periodsToDisplayCurrently = sourcePeriods.slice(0, 60); // Fallback if no date range selected
-    }
+      return isAfter(periodEndDate, addDays(userRangeStart, -1)) && isBefore(periodStartDate, addDays(userRangeEnd, 1));
+    });
+  } else {
+    periodsToDisplayCurrently = sourcePeriods.slice(0, 60); // Fallback if no date range selected
+  }
 
-    setDisplayedPeriodHeaders(periodsToDisplayCurrently);
+  // Reset scroll positions when data changes
+  if (headerPeriodScrollerRef.current) headerPeriodScrollerRef.current.scrollLeft = 0;
+  if (tableBodyScrollRef.current) tableBodyScrollRef.current.scrollLeft = 0;
 
-    const standardWorkMinutes = selectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
-    const newDisplayData: CapacityDataRow[] = [];
+  setDisplayedPeriodHeaders(periodsToDisplayCurrently);
 
-    const buName = selectedBusinessUnit;
-    const relevantRawLobEntriesForSelectedBu = localRawCapacityDataSource.filter(d => d.bu === buName);
+  const standardWorkMinutes = selectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
+  const newDisplayData: CapacityDataRow[] = [];
 
-    if (relevantRawLobEntriesForSelectedBu.length === 0) {
-      setDisplayableCapacityData([]);
-      return;
-    }
+  const buName = selectedBusinessUnit;
+  const relevantRawLobEntriesForSelectedBu = localRawCapacityDataSource.filter(d => d.bu === buName);
 
-    const childrenLobsDataRows: CapacityDataRow[] = [];
+  if (relevantRawLobEntriesForSelectedBu.length === 0) {
+    setDisplayableCapacityData([]);
+    return;
+  }
 
-    const lobsToProcessForThisBu = selectedLineOfBusiness.length === 0 ||
-                                   (selectedLineOfBusiness.length === BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness.length &&
-                                    selectedLineOfBusiness.every(lob => BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness.includes(lob as any)))
-      ? relevantRawLobEntriesForSelectedBu
-      : relevantRawLobEntriesForSelectedBu.filter(lobEntry => selectedLineOfBusiness.includes(lobEntry.lob));
+  const childrenLobsDataRows: CapacityDataRow[] = [];
 
-    lobsToProcessForThisBu.forEach(lobRawEntry => {
-        const childrenTeamsDataRows: CapacityDataRow[] = [];
-        const teamsToProcess = lobRawEntry.teams || [];
+  const lobsToProcessForThisBu = selectedLineOfBusiness.length === 0 ||
+                                 (selectedLineOfBusiness.length === BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness.length &&
+                                  selectedLineOfBusiness.every(lob => BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness.includes(lob as any)))
+    ? relevantRawLobEntriesForSelectedBu
+    : relevantRawLobEntriesForSelectedBu.filter(lobEntry => selectedLineOfBusiness.includes(lobEntry.lob));
 
-        const lobCalculatedBaseRequiredMinutes: Record<string, number | null> = {};
-        periodsToDisplayCurrently.forEach(period => {
-            const volume = lobRawEntry.lobVolumeForecast?.[period];
-            const avgAHT = lobRawEntry.lobAverageAHT?.[period];
-            if (volume !== null && volume !== undefined && avgAHT !== null && avgAHT !== undefined && avgAHT > 0) {
-                lobCalculatedBaseRequiredMinutes[period] = volume * avgAHT;
-            } else {
-                lobCalculatedBaseRequiredMinutes[period] = lobRawEntry.lobTotalBaseRequiredMinutes?.[period] ?? 0;
-            }
-            if (!lobRawEntry.lobTotalBaseRequiredMinutes) lobRawEntry.lobTotalBaseRequiredMinutes = {};
-            lobRawEntry.lobTotalBaseRequiredMinutes[period] = lobCalculatedBaseRequiredMinutes[period];
-        });
+  lobsToProcessForThisBu.forEach(lobRawEntry => {
+    const childrenTeamsDataRows: CapacityDataRow[] = [];
+    const teamsToProcess = lobRawEntry.teams || [];
 
-        teamsToProcess.forEach(teamRawEntry => {
-            const periodicTeamMetrics: Record<string, TeamPeriodicMetrics> = {};
-            periodsToDisplayCurrently.forEach(period => {
-              periodicTeamMetrics[period] = calculateTeamMetricsForPeriod(
-                teamRawEntry.periodicInputData[period] || {},
-                lobCalculatedBaseRequiredMinutes[period],
-                standardWorkMinutes
-              );
-            });
-            childrenTeamsDataRows.push({
-              id: `${lobRawEntry.id}_${teamRawEntry.teamName.replace(/\s+/g, '-')}`,
-              name: teamRawEntry.teamName,
-              level: 2,
-              itemType: 'Team',
-              periodicData: periodicTeamMetrics,
-              lobId: lobRawEntry.id,
-            });
-        });
-
-        const lobPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
-        periodsToDisplayCurrently.forEach(period => {
-            let reqHcSum = 0;
-            let actHcSum = 0;
-            let lobBaseMinutesForLobPeriod = lobCalculatedBaseRequiredMinutes[period] ?? 0;
-
-            childrenTeamsDataRows.forEach(teamRow => {
-                const teamPeriodMetric = teamRow.periodicData[period] as TeamPeriodicMetrics;
-                if (teamPeriodMetric) {
-                    reqHcSum += teamPeriodMetric.requiredHC ?? 0;
-                    actHcSum += teamPeriodMetric.actualHC ?? 0;
-                }
-            });
-            const overUnderHCSum = (actHcSum !== null && reqHcSum !== null) ? actHcSum - reqHcSum : null;
-
-            lobPeriodicData[period] = {
-                requiredHC: reqHcSum,
-                actualHC: actHcSum,
-                overUnderHC: overUnderHCSum,
-                lobTotalBaseRequiredMinutes: lobBaseMinutesForLobPeriod,
-            };
-        });
-
-        if (childrenTeamsDataRows.length > 0 || teamsToProcess.length > 0) {
-          childrenLobsDataRows.push({
-            id: lobRawEntry.id,
-            name: lobRawEntry.lob,
-            level: 1,
-            itemType: 'LOB',
-            periodicData: lobPeriodicData,
-            children: childrenTeamsDataRows,
-          });
-        }
+    const lobCalculatedBaseRequiredMinutes: Record<string, number | null> = {};
+    periodsToDisplayCurrently.forEach(period => {
+      const volume = lobRawEntry.lobVolumeForecast?.[period];
+      const avgAHT = lobRawEntry.lobAverageAHT?.[period];
+      if (volume !== null && volume !== undefined && avgAHT !== null && avgAHT !== undefined && avgAHT > 0) {
+        lobCalculatedBaseRequiredMinutes[period] = volume * avgAHT;
+      } else {
+        lobCalculatedBaseRequiredMinutes[period] = lobRawEntry.lobTotalBaseRequiredMinutes?.[period] ?? 0;
+      }
+      if (!lobRawEntry.lobTotalBaseRequiredMinutes) lobRawEntry.lobTotalBaseRequiredMinutes = {};
+      lobRawEntry.lobTotalBaseRequiredMinutes[period] = lobCalculatedBaseRequiredMinutes[period];
     });
 
-    if (childrenLobsDataRows.length > 0 ) {
-      const buPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
+    teamsToProcess.forEach(teamRawEntry => {
+      const periodicTeamMetrics: Record<string, TeamPeriodicMetrics> = {};
       periodsToDisplayCurrently.forEach(period => {
-        let reqHcSum = 0;
-        let actHcSum = 0;
-        let lobTotalBaseReqMinsForBu = 0;
-        childrenLobsDataRows.forEach(lobRow => {
-            const lobPeriodMetric = lobRow.periodicData[period] as AggregatedPeriodicMetrics;
-              if (lobPeriodMetric) {
-                reqHcSum += lobPeriodMetric.requiredHC ?? 0;
-                actHcSum += lobPeriodMetric.actualHC ?? 0;
-                lobTotalBaseReqMinsForBu += lobPeriodMetric.lobTotalBaseRequiredMinutes ?? 0;
-              }
-        });
-        const overUnderHCSum = (actHcSum !== null && reqHcSum !== null) ? actHcSum - reqHcSum : null;
-
-        buPeriodicData[period] = {
-            requiredHC: reqHcSum,
-            actualHC: actHcSum,
-            overUnderHC: overUnderHCSum,
-            lobTotalBaseRequiredMinutes: lobTotalBaseReqMinsForBu,
-        };
+        periodicTeamMetrics[period] = calculateTeamMetricsForPeriod(
+          teamRawEntry.periodicInputData[period] || {},
+          lobCalculatedBaseRequiredMinutes[period],
+          standardWorkMinutes
+        );
       });
-      newDisplayData.push({
-        id: buName,
-        name: buName,
-        level: 0,
-        itemType: 'BU',
-        periodicData: buPeriodicData,
-        children: childrenLobsDataRows,
+      childrenTeamsDataRows.push({
+        id: `${lobRawEntry.id}_${teamRawEntry.teamName.replace(/\s+/g, '-')}`,
+        name: teamRawEntry.teamName,
+        level: 2,
+        itemType: 'Team',
+        periodicData: periodicTeamMetrics,
+        lobId: lobRawEntry.id,
+      });
+    });
+
+    const lobPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
+    periodsToDisplayCurrently.forEach(period => {
+      let reqHcSum = 0;
+      let actHcSum = 0;
+      let lobBaseMinutesForLobPeriod = lobCalculatedBaseRequiredMinutes[period] ?? 0;
+
+      childrenTeamsDataRows.forEach(teamRow => {
+        const teamPeriodMetric = teamRow.periodicData[period] as TeamPeriodicMetrics;
+        if (teamPeriodMetric) {
+          reqHcSum += teamPeriodMetric.requiredHC ?? 0;
+          actHcSum += teamPeriodMetric.actualHC ?? 0;
+        }
+      });
+      const overUnderHCSum = (actHcSum !== null && reqHcSum !== null) ? actHcSum - reqHcSum : null;
+
+      lobPeriodicData[period] = {
+        requiredHC: reqHcSum,
+        actualHC: actHcSum,
+        overUnderHC: overUnderHCSum,
+        lobTotalBaseRequiredMinutes: lobBaseMinutesForLobPeriod,
+      };
+    });
+
+    if (childrenTeamsDataRows.length > 0 || teamsToProcess.length > 0) {
+      childrenLobsDataRows.push({
+        id: lobRawEntry.id,
+        name: lobRawEntry.lob,
+        level: 1,
+        itemType: 'LOB',
+        periodicData: lobPeriodicData,
+        children: childrenTeamsDataRows,
       });
     }
-    setDisplayableCapacityData(newDisplayData);
+  });
 
-  }, [
-      selectedBusinessUnit,
-      selectedLineOfBusiness,
-      selectedTimeInterval,
-      selectedDateRange,
-      localRawCapacityDataSource,
-    ]);
+  if (childrenLobsDataRows.length > 0) {
+    const buPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
+    periodsToDisplayCurrently.forEach(period => {
+      let reqHcSum = 0;
+      let actHcSum = 0;
+      let lobTotalBaseReqMinsForBu = 0;
+      childrenLobsDataRows.forEach(lobRow => {
+        const lobPeriodMetric = lobRow.periodicData[period] as AggregatedPeriodicMetrics;
+        if (lobPeriodMetric) {
+          reqHcSum += lobPeriodMetric.requiredHC ?? 0;
+          actHcSum += lobPeriodMetric.actualHC ?? 0;
+          lobTotalBaseReqMinsForBu += lobPeriodMetric.lobTotalBaseRequiredMinutes ?? 0;
+        }
+      });
+      const overUnderHCSum = (actHcSum !== null && reqHcSum !== null) ? actHcSum - reqHcSum : null;
+
+      buPeriodicData[period] = {
+        requiredHC: reqHcSum,
+        actualHC: actHcSum,
+        overUnderHC: overUnderHCSum,
+        lobTotalBaseRequiredMinutes: lobTotalBaseReqMinsForBu,
+      };
+    });
+    newDisplayData.push({
+      id: buName,
+      name: buName,
+      level: 0,
+      itemType: 'BU',
+      periodicData: buPeriodicData,
+      children: childrenLobsDataRows,
+    });
+  }
+
+  setDisplayableCapacityData(newDisplayData);
+}, [
+  selectedBusinessUnit,
+  selectedLineOfBusiness,
+  selectedTimeInterval,
+  selectedDateRange,
+  localRawCapacityDataSource,
+]);
 
   useEffect(() => {
     processDataForTable();
@@ -2069,40 +2218,42 @@ export default function CapacityInsightsPage() {
   const toggleExpand = useCallback((id: string) => {
     setExpandedItems(prev => ({ ...prev, [id]: !prev[id] }));
   }, []);
-
+  
   useEffect(() => {
     const headerScroller = headerPeriodScrollerRef.current;
     const bodyScroller = tableBodyScrollRef.current;
 
     if (!headerScroller || !bodyScroller) return;
 
+    // Align initial scroll position
+    headerScroller.scrollLeft = bodyScroller.scrollLeft;
+
     const syncScroll = (source: HTMLElement, target: HTMLElement) => {
       if (isSyncingScroll.current) return;
       isSyncingScroll.current = true;
       target.scrollLeft = source.scrollLeft;
-      requestAnimationFrame(() => {
-        isSyncingScroll.current = false;
-      });
+      isSyncingScroll.current = false;
     };
 
-    const handleHeaderScroll = () => syncScroll(headerScroller, bodyScroller);
-    const handleBodyScroll = () => syncScroll(bodyScroller, headerScroller);
+    const throttledHeaderScroll = throttle(() => syncScroll(headerScroller, bodyScroller), 16);
+    const throttledBodyScroll = throttle(() => syncScroll(bodyScroller, headerScroller), 16);
 
-    headerScroller.addEventListener('scroll', handleHeaderScroll);
-    bodyScroller.addEventListener('scroll', handleBodyScroll);
+    headerScroller.addEventListener('scroll', throttledHeaderScroll, { passive: true });
+    bodyScroller.addEventListener('scroll', throttledBodyScroll, { passive: true });
 
     return () => {
-      headerScroller.removeEventListener('scroll', handleHeaderScroll);
-      bodyScroller.removeEventListener('scroll', handleBodyScroll);
+      headerScroller.removeEventListener('scroll', throttledHeaderScroll);
+      bodyScroller.removeEventListener('scroll', throttledBodyScroll);
     };
   }, []);
 
+ const scrollContainerRef = useRef<HTMLDivElement>(null);
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">
+ <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">
       <HeaderSection
         filterOptions={filterOptions}
         selectedBusinessUnit={selectedBusinessUnit}
-        onSelectBusinessUnit={handleBusinessUnitChange}
+ onSelectBusinessUnit={handleBusinessUnitChange}
         selectedLineOfBusiness={selectedLineOfBusiness}
         onSelectLineOfBusiness={handleLOBChange}
         selectedTimeInterval={selectedTimeInterval}
@@ -2114,6 +2265,7 @@ export default function CapacityInsightsPage() {
         activeHierarchyContext={activeHierarchyContext}
         headerPeriodScrollerRef={headerPeriodScrollerRef}
       />
+      <div ref={scrollContainerRef} className="overflow-x-auto">
       <main className="flex-grow px-4 pb-4 overflow-auto">
         <CapacityTable
           data={displayableCapacityData}
@@ -2131,6 +2283,7 @@ export default function CapacityInsightsPage() {
           tableBodyScrollRef={tableBodyScrollRef}
         />
       </main>
+      </div>
     </div>
   );
 }
