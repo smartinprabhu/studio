@@ -1,7 +1,8 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef }
+from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -23,7 +24,10 @@ import {
   eachWeekOfInterval,
   differenceInCalendarWeeks,
   addWeeks,
-  isSameDay
+  isSameDay,
+  // getUTCDate, // Removed: will use date.getUTCDate()
+  // getUTCMonth, // Removed: will use date.getUTCMonth()
+  // getUTCFullYear as getUTCFullYearFns, // Removed: will use date.getUTCFullYear()
 } from 'date-fns';
 import type { DateRange } from "react-day-picker";
 
@@ -89,7 +93,7 @@ const isLeapYear = (year: number): boolean => {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 };
 
-const formatDatePartUTC = (date: Date): string => 
+const formatDatePartUTCFromDate = (date: Date): string => 
   `${(date.getUTCMonth() + 1).toString().padStart(2, '0')}/${date.getUTCDate().toString().padStart(2, '0')}`;
 
 const generateFiscalWeekHeaders = (startFiscalYear: number, numTotalWeeks: number): string[] => {
@@ -99,15 +103,12 @@ const generateFiscalWeekHeaders = (startFiscalYear: number, numTotalWeeks: numbe
   const currentYearIsLeap = isLeapYear(startFiscalYear);
 
   if (currentYearIsLeap) {
-    // Fiscal year starts on the week containing Feb 1st for a leap year
-    const feb1st = new Date(Date.UTC(startFiscalYear, 1, 1)); // Month is 0-indexed (1 for February)
-    let dayOfWeek = feb1st.getUTCDay(); // 0 for Sunday, 1 for Monday, ...
-    // Adjust dayOfWeek so Monday is 0, Sunday is 6
+    const feb1st = new Date(Date.UTC(startFiscalYear, 1, 1)); 
+    let dayOfWeek = feb1st.getUTCDay(); 
     dayOfWeek = (dayOfWeek === 0) ? 6 : dayOfWeek - 1;
     fiscalYearActualStartDate = new Date(Date.UTC(startFiscalYear, 1, 1 - dayOfWeek));
   } else {
-    // Fiscal year starts on the week containing Jan 22nd for a standard year
-    const jan22nd = new Date(Date.UTC(startFiscalYear, 0, 22)); // Month is 0-indexed (0 for January)
+    const jan22nd = new Date(Date.UTC(startFiscalYear, 0, 22)); 
     let dayOfWeek = jan22nd.getUTCDay();
     dayOfWeek = (dayOfWeek === 0) ? 6 : dayOfWeek - 1;
     fiscalYearActualStartDate = new Date(Date.UTC(startFiscalYear, 0, 22 - dayOfWeek));
@@ -120,17 +121,17 @@ const generateFiscalWeekHeaders = (startFiscalYear: number, numTotalWeeks: numbe
     const weekEndDate = new Date(weekStartDate);
     weekEndDate.setUTCDate(weekStartDate.getUTCDate() + 6);
 
-    const displayYear = weekStartDate.getUTCFullYear(); // Year of the week's start date
+    const displayYear = weekStartDate.getUTCFullYear(); 
 
     headers.push(
-      `FWk${i + 1}: ${formatDatePartUTC(weekStartDate)}-${formatDatePartUTC(weekEndDate)} (${displayYear})`
+      `FWk${i + 1}: ${formatDatePartUTCFromDate(weekStartDate)}-${formatDatePartUTCFromDate(weekEndDate)} (${displayYear})`
     );
   }
   return headers;
 };
 
 
-export const ALL_WEEKS_HEADERS = generateFiscalWeekHeaders(2024, 104); // Generate 2 years of fiscal weeks
+export const ALL_WEEKS_HEADERS = generateFiscalWeekHeaders(2024, 104); 
 
 export const ALL_MONTH_HEADERS = Array.from({ length: 24 }, (_, i) => { 
   const year = 2024 + Math.floor(i / 12);
@@ -192,24 +193,31 @@ export interface TeamPeriodicMetrics extends BaseHCValues {
   newHireBatch: number | null; 
   newHireProduction: number | null; 
   
-  _productivity: number | null; // Placeholder, may not be directly used if HC calc is based on minutes
+  attritionLossHC?: number | null; // Calculated
+  hcAfterAttrition?: number | null; // Calculated
+  endingHC?: number | null; // Calculated
 
   _calculatedRequiredAgentMinutes?: number | null; 
   _calculatedActualProductiveAgentMinutes?: number | null; 
-  attritionLossHC?: number | null; 
-  hcAfterAttrition?: number | null; 
-  endingHC?: number | null; 
 }
 
 export interface AggregatedPeriodicMetrics extends BaseHCValues {
-  // LOBs and BUs will show aggregated HC values.
-  // Agent minute values previously here are removed as per user request.
-  lobTotalBaseRequiredMinutes?: number | null; // Still needed for LOB to distribute to teams
+  lobVolumeForecast?: number | null; // Input for LOB
+  lobAverageAHT?: number | null; // Input for LOB
+  lobTotalBaseRequiredMinutes?: number | null; // Calculated or Input for LOB
 }
 
 export interface RawTeamDataEntry {
   teamName: TeamName;
-  periodicInputData: Record<string, Partial<Omit<TeamPeriodicMetrics, 'requiredHC' | 'overUnderHC' | '_calculatedRequiredAgentMinutes' | '_calculatedActualProductiveAgentMinutes' | 'attritionLossHC' | 'hcAfterAttrition' | 'endingHC'>>>;
+  periodicInputData: Record<string, Partial<Omit<TeamPeriodicMetrics, 
+    'requiredHC' | 
+    'overUnderHC' | 
+    '_calculatedRequiredAgentMinutes' | 
+    '_calculatedActualProductiveAgentMinutes' | 
+    'attritionLossHC' | 
+    'hcAfterAttrition' | 
+    'endingHC'
+  >>>;
 }
 
 export interface RawLoBCapacityEntry {
@@ -218,7 +226,7 @@ export interface RawLoBCapacityEntry {
   lob: string; 
   lobVolumeForecast: Record<string, number | null>; 
   lobAverageAHT: Record<string, number | null>; 
-  lobTotalBaseRequiredMinutes: Record<string, number | null>; // Calculated: Volume * AHT, or direct input
+  lobTotalBaseRequiredMinutes: Record<string, number | null>; 
   teams: RawTeamDataEntry[];
 }
 
@@ -237,46 +245,59 @@ export interface MetricDefinition {
     label: string;
     isPercentage?: boolean; 
     isHC?: boolean; 
-    isTime?: boolean; // For AHT
+    isTime?: boolean; 
+    isCount?: boolean; // For raw numbers like volume
     isEditableForTeam?: boolean; 
-    isDisplayOnly?: boolean; // For calculated fields
-    step?: string | number; // For input number steps
+    isEditableForLob?: boolean;
+    isDisplayOnly?: boolean; 
+    step?: string | number; 
+    category?: 'PrimaryHC' | 'CalculatedHC' | 'Assumption' | 'HCAdjustment' | 'Internal';
+    description?: string;
 }
 
 export type TeamMetricDefinitions = MetricDefinition[];
 export type AggregatedMetricDefinitions = MetricDefinition[];
 
 export const TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = [
-  { key: "aht", label: "AHT", isTime: true, isEditableForTeam: true, step: 0.1 },
-  { key: "shrinkagePercentage", label: "Shrinkage %", isPercentage: true, isEditableForTeam: true, step: 0.1 },
-  { key: "occupancyPercentage", label: "Occupancy %", isPercentage: true, isEditableForTeam: true, step: 0.1 },
-  { key: "backlogPercentage", label: "Backlog %", isPercentage: true, isEditableForTeam: true, step: 0.1, },
-  { key: "volumeMixPercentage", label: "Volume Mix %", isPercentage: true, isEditableForTeam: true, step: 0.1 },
-  { key: "requiredHC", label: "Required HC", isHC: true, isDisplayOnly: true },
-  { key: "actualHC", label: "Actual/Starting HC", isHC: true, isEditableForTeam: true, step: 0.01 }, 
-  { key: "overUnderHC", label: "Over/Under HC", isHC: true, isDisplayOnly: true },
-  { key: "attritionPercentage", label: "Attrition %", isPercentage: true, isEditableForTeam: true, step: 0.1 },
-  { key: "attritionLossHC", label: "Attrition Loss HC", isHC: true, isDisplayOnly: true },
-  { key: "hcAfterAttrition", label: "HC After Attrition", isHC: true, isDisplayOnly: true }, 
-  { key: "moveIn", label: "Move In (+)", isEditableForTeam: true, step: 1, isHC: true },
-  { key: "moveOut", label: "Move Out (-)", isEditableForTeam: true, step: 1, isHC: true },
-  { key: "newHireBatch", label: "New Hire Batch", isEditableForTeam: true, step: 1, isHC: true },
-  { key: "newHireProduction", label: "New Hire Production", isEditableForTeam: true, step: 1, isHC: true },
-  { key: "endingHC", label: "Ending HC", isHC: true, isDisplayOnly: true },
-  { key: "_calculatedRequiredAgentMinutes", label: "Eff. Req. Mins (Team)", isDisplayOnly: true, isTime: true }, 
-  { key: "_calculatedActualProductiveAgentMinutes", label: "Actual Prod. Mins (Team)", isDisplayOnly: true, isTime: true }, 
+  // Primary HC Metrics (displayed directly under Team name)
+  { key: "requiredHC", label: "Required HC", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Calculated number of agents needed." },
+  { key: "actualHC", label: "Actual/Starting HC", isHC: true, isEditableForTeam: true, step: 0.01, category: 'PrimaryHC', description: "Actual headcount at the start of the period." }, 
+  { key: "overUnderHC", label: "Over/Under HC", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Difference between Actual/Starting HC and Required HC." },
+  
+  // Assumptions (under "Assumptions" expandable section)
+  { key: "aht", label: "AHT", isTime: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Average Handle Time: The average time taken to handle one interaction." },
+  { key: "shrinkagePercentage", label: "Shrinkage %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Shrinkage: Percentage of paid time that agents are not available for handling interactions (e.g., breaks, training, meetings)." },
+  { key: "occupancyPercentage", label: "Occupancy %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Occupancy: Percentage of time agents are busy with interaction-related work during their available time." },
+  { key: "backlogPercentage", label: "Backlog %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Backlog: Percentage of additional work (e.g., deferred tasks) that needs to be handled on top of forecasted volume." },
+  { key: "attritionPercentage", label: "Attrition %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Attrition: Percentage of agents expected to leave during the period." },
+  { key: "volumeMixPercentage", label: "Volume Mix %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Volume Mix: Percentage of the LOB's total volume handled by this team." },
+
+  // HC Adjustments (under "HC Adjustments" expandable section)
+  { key: "moveIn", label: "Move In (+)", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Agents transferring into this team." },
+  { key: "moveOut", label: "Move Out (-)", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Agents transferring out of this team." },
+  { key: "newHireBatch", label: "New Hire Batch", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "New agents starting training." },
+  { key: "newHireProduction", label: "New Hire Production", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "New agents completing training and becoming productive." },
+  { key: "attritionLossHC", label: "Attrition Loss HC", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Calculated headcount lost to attrition." },
+  { key: "hcAfterAttrition", label: "HC After Attrition", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Headcount after attrition, before other movements." }, 
+  { key: "endingHC", label: "Ending HC", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Projected headcount at the end of the period." },
+  
+  // Internal/Detailed Calculations (not directly displayed as rows, but used in tooltips or other calcs)
+  { key: "_calculatedRequiredAgentMinutes", label: "Eff. Req. Mins (Team)", isDisplayOnly: true, isTime: true, category: 'Internal' }, 
+  { key: "_calculatedActualProductiveAgentMinutes", label: "Actual Prod. Mins (Team)", isDisplayOnly: true, isTime: true, category: 'Internal' }, 
 ];
 
 export const AGGREGATED_METRIC_ROW_DEFINITIONS: AggregatedMetricDefinitions = [
-  { key: "requiredHC", label: "Required HC", isHC: true },
-  { key: "actualHC", label: "Actual/Starting HC", isHC: true },
-  { key: "lobTotalBaseRequiredMinutes", label: "LOB Total Base Req Mins", isTime: true }, // This is input/calculated for LOB, then distributed.
-  { key: "overUnderHC", label: "Over/Under HC", isHC: true },
+  { key: "lobVolumeForecast", label: "LOB Volume Forecast", isEditableForLob: true, step: 1, isCount: true, description: "Total number of interactions forecasted for this LOB." },
+  { key: "lobAverageAHT", label: "LOB Average AHT", isEditableForLob: true, step: 0.1, isTime: true, description: "Average handle time assumed for LOB interactions." },
+  { key: "lobTotalBaseRequiredMinutes", label: "LOB Total Base Req Mins", isEditableForLob: true, isTime: true, step: 1, description: "Total agent minutes required for LOB volume, calculated as Volume * AHT or input directly." },
+  { key: "requiredHC", label: "Required HC", isHC: true, description: "Aggregated required headcount from child entities." },
+  { key: "actualHC", label: "Actual/Starting HC", isHC: true, description: "Aggregated actual/starting headcount from child entities." },
+  { key: "overUnderHC", label: "Over/Under HC", isHC: true, description: "Difference between aggregated Actual/Starting HC and Required HC." },
 ];
 
 export interface FilterOptions {
   businessUnits: BusinessUnitName[];
-  linesOfBusiness: string[]; // LOBs relevant to the selected BU
+  linesOfBusiness: string[]; 
 }
 
 export interface HeaderSectionProps {
@@ -290,32 +311,31 @@ export interface HeaderSectionProps {
   selectedDateRange: DateRange | undefined;
   onSelectDateRange: (value: DateRange | undefined) => void;
   allAvailablePeriods: string[]; 
+  displayedPeriodHeaders: string[];
+  activeHierarchyContext: string;
+  headerPeriodScrollerRef: React.RefObject<HTMLDivElement>;
 }
 // --- END CONSOLIDATED TYPES ---
 
 // --- BEGIN CONSOLIDATED DATA ---
-const MOCK_DATA_PERIODS = ALL_WEEKS_HEADERS; // Use all generated fiscal weeks
+const MOCK_DATA_PERIODS = ALL_WEEKS_HEADERS; 
 
 const generateTeamPeriodicInputData = (periods: string[], teamIndex: number, totalTeams: number): Record<string, Partial<Omit<TeamPeriodicMetrics, 'requiredHC' | 'overUnderHC' | '_calculatedRequiredAgentMinutes' | '_calculatedActualProductiveAgentMinutes' | 'attritionLossHC' | 'hcAfterAttrition' | 'endingHC'>>> => {
   const metrics: Record<string, Partial<Omit<TeamPeriodicMetrics, 'requiredHC' | 'overUnderHC' | '_calculatedRequiredAgentMinutes' | '_calculatedActualProductiveAgentMinutes' | 'attritionLossHC' | 'hcAfterAttrition' | 'endingHC'>>> = {};
   
-  // Initial even split for volume mix, will be adjusted by user or more complex logic later
-  const initialMix = totalTeams > 0 ? parseFloat((100 / totalTeams).toFixed(1)) : 0;
-  let sumOfMix = 0;
+  const baseMix = totalTeams > 0 ? 100 / totalTeams : 0;
   const mixes = Array(totalTeams).fill(0).map((_, idx) => {
-      if (idx === totalTeams - 1) { // Ensure last team makes sum 100
-          return Math.max(0, parseFloat((100 - sumOfMix).toFixed(1)));
-      }
-      const currentMix = initialMix;
-      sumOfMix += currentMix;
-      return currentMix;
+    if (idx === totalTeams - 1) {
+      return parseFloat((100 - (totalTeams - 1) * Math.floor(baseMix)).toFixed(1));
+    }
+    return parseFloat(Math.floor(baseMix).toFixed(1));
   });
-   // Final check for sum, adjust last element if necessary
-   const finalSumCheck = mixes.reduce((acc, curr) => acc + curr, 0);
-   if (Math.abs(finalSumCheck - 100) > 0.01 && totalTeams > 0 && mixes.length > 0) {
-       mixes[mixes.length - 1] += (100 - finalSumCheck);
-       mixes[mixes.length - 1] = parseFloat(mixes[mixes.length - 1].toFixed(1));
-   }
+  // Ensure sum is 100, adjust last element if needed
+  let sumOfMixes = mixes.reduce((acc, curr) => acc + curr, 0);
+  if (Math.abs(sumOfMixes - 100) > 0.01 && mixes.length > 0) {
+      mixes[mixes.length - 1] += (100 - sumOfMixes);
+      mixes[mixes.length - 1] = parseFloat(mixes[mixes.length - 1].toFixed(1));
+  }
 
 
   periods.forEach(period => {
@@ -331,24 +351,27 @@ const generateTeamPeriodicInputData = (periods: string[], teamIndex: number, tot
       moveOut: Math.floor(Math.random() * 3),
       newHireBatch: Math.random() > 0.7 ? Math.floor(Math.random() * 10) + 5 : 0,
       newHireProduction: Math.random() > 0.5 ? Math.floor(Math.random() * 8) : 0,
-      _productivity: Math.floor(Math.random() * 5) + 5, 
     };
   });
   return metrics;
 };
 
-const generateLobInputs = (periods: string[]): { volume: Record<string, number | null>, aht: Record<string, number | null>, baseReqMins: Record<string, number | null>} => {
+const generateLobInputs = (periods: string[]): { 
+  volume: Record<string, number | null>, 
+  aht: Record<string, number | null>, 
+  baseReqMins: Record<string, number | null>
+} => {
   const volume: Record<string, number | null> = {};
-  const aht: Record<string, number | null> = {};
+  const avgAht: Record<string, number | null> = {}; // Renamed for clarity
   const baseReqMins: Record<string, number | null> = {};
   periods.forEach(period => {
     const currentVolume = Math.floor(Math.random() * 10000) + 2000; 
     const currentAHT = Math.floor(Math.random() * 10) + 5; 
     volume[period] = currentVolume;
-    aht[period] = currentAHT;
-    baseReqMins[period] = currentVolume * currentAHT; // Base required minutes from LOB forecast
+    avgAht[period] = currentAHT;
+    baseReqMins[period] = currentVolume * currentAHT; 
   });
-  return { volume, aht, baseReqMins };
+  return { volume, aht: avgAht, baseReqMins };
 };
 
 const initialMockRawCapacityData: RawLoBCapacityEntry[] = [];
@@ -390,7 +413,7 @@ const calculateTeamMetricsForPeriod = (
   const defaults: TeamPeriodicMetrics = {
     aht: null, shrinkagePercentage: null, occupancyPercentage: null, backlogPercentage: null,
     attritionPercentage: null, volumeMixPercentage: null, actualHC: null, moveIn: null,
-    moveOut: null, newHireBatch: null, newHireProduction: null, _productivity: null,
+    moveOut: null, newHireBatch: null, newHireProduction: null, 
     _calculatedRequiredAgentMinutes: null,
     _calculatedActualProductiveAgentMinutes: null,
     requiredHC: null,
@@ -401,14 +424,12 @@ const calculateTeamMetricsForPeriod = (
     ...teamInputDataCurrentPeriod, 
   };
 
-  // 1. Calculate Effective Team Required Agent Minutes (incorporating backlog)
   const baseTeamRequiredMinutes = (lobTotalBaseRequiredMinutesForPeriod ?? 0) * ((defaults.volumeMixPercentage ?? 0) / 100);
   const effectiveTeamRequiredMinutes = baseTeamRequiredMinutes * (1 + ((defaults.backlogPercentage ?? 0) / 100));
   defaults._calculatedRequiredAgentMinutes = effectiveTeamRequiredMinutes;
 
-  // 2. Calculate Required HC for the team
   let requiredHC = null;
-  if (effectiveTeamRequiredMinutes > 0 && standardWorkMinutesForPeriod > 0 && defaults.shrinkagePercentage !== null && defaults.occupancyPercentage !== null) {
+  if (effectiveTeamRequiredMinutes > 0 && standardWorkMinutesForPeriod > 0 && defaults.shrinkagePercentage !== null && defaults.occupancyPercentage !== null && defaults.occupancyPercentage > 0) {
     const effectiveMinutesPerHC = standardWorkMinutesForPeriod * 
                                  (1 - (defaults.shrinkagePercentage / 100)) * 
                                  (defaults.occupancyPercentage / 100);
@@ -420,13 +441,9 @@ const calculateTeamMetricsForPeriod = (
   }
   defaults.requiredHC = requiredHC;
 
-  // 3. Use input `actualHC` (represents starting/planned HC for the period)
   const currentActualHC = defaults.actualHC ?? 0;
-
-  // 4. Calculate Over/Under HC
   defaults.overUnderHC = (currentActualHC !== null && requiredHC !== null) ? currentActualHC - requiredHC : null;
 
-  // 5. Calculate Actual Productive Agent Minutes
   if (currentActualHC !== null && standardWorkMinutesForPeriod > 0 && defaults.shrinkagePercentage !== null && defaults.occupancyPercentage !== null) {
     defaults._calculatedActualProductiveAgentMinutes = currentActualHC * standardWorkMinutesForPeriod *
                                                   (1 - (defaults.shrinkagePercentage / 100)) *
@@ -435,7 +452,6 @@ const calculateTeamMetricsForPeriod = (
     defaults._calculatedActualProductiveAgentMinutes = 0;
   }
   
-  // 6. Calculate Attrition and Ending HC
   const attritionLossHC = currentActualHC * ((defaults.attritionPercentage ?? 0) / 100);
   defaults.attritionLossHC = attritionLossHC;
 
@@ -452,12 +468,9 @@ const parseDateFromHeaderStringMMDDYYYY = (dateMMDD: string, year: string): Date
   if (!dateMMDD || !year) return null;
   const [month, day] = dateMMDD.split('/').map(Number);
   if (isNaN(month) || isNaN(day) || isNaN(parseInt(year))) return null;
-  // Use Date.UTC to avoid timezone issues when creating the date
   const parsedDate = new Date(Date.UTC(parseInt(year), month - 1, day)); 
-  // Validate the parsed date
   if (parsedDate.getUTCFullYear() !== parseInt(year) || parsedDate.getUTCMonth() !== month - 1 || parsedDate.getUTCDate() !== day) {
-    // console.warn(`Date parsing mismatch for ${dateMMDD}/${year}`);
-    return null; // Invalid date components
+    return null; 
   }
   return parsedDate;
 };
@@ -465,13 +478,10 @@ const parseDateFromHeaderStringMMDDYYYY = (dateMMDD: string, year: string): Date
 
 const getHeaderDateRange = (header: string, interval: TimeInterval): { startDate: Date | null, endDate: Date | null } => {
   if (interval === "Week") {
-    // Updated regex for FWk format
     const match = header.match(/FWk\d+:\s*(\d{2}\/\d{2})-(\d{2}\/\d{2})\s*\((\d{4})\)/);
     if (match) {
       const [, startDateStr, endDateStr, yearStr] = match;
-      
       let parsedStartDate = parseDateFromHeaderStringMMDDYYYY(startDateStr, yearStr);
-      
       let parsedEndDate = parseDateFromHeaderStringMMDDYYYY(endDateStr, yearStr);
 
       if (parsedStartDate && parsedEndDate && isBefore(parsedEndDate, parsedStartDate)) {
@@ -481,12 +491,7 @@ const getHeaderDateRange = (header: string, interval: TimeInterval): { startDate
             parsedEndDate = potentialEndDateNextYear;
          }
       }
-
-
-      return {
-        startDate: parsedStartDate,
-        endDate: parsedEndDate,
-      };
+      return { startDate: parsedStartDate, endDate: parsedEndDate };
     }
   } else if (interval === "Month") {
     try {
@@ -499,20 +504,19 @@ const getHeaderDateRange = (header: string, interval: TimeInterval): { startDate
         return { startDate: firstDay, endDate: lastDay };
       }
     } catch (e) {
-        // console.warn(`Could not parse month header: ${header}`, e);
+      // console.warn(`Could not parse month header: ${header}`, e);
     }
   }
   return { startDate: null, endDate: null };
 };
 
-const getDefaultDateRange = (interval: TimeInterval): DateRange => {
-  const headers = interval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-  const numPeriodsToDefault = interval === "Week" ? 11 : 2; 
+const getDefaultDateRange = (interval: TimeInterval, allHeaders: string[]): DateRange => {
+  if (allHeaders.length === 0) return { from: undefined, to: undefined };
 
-  if (headers.length === 0) return { from: undefined, to: undefined };
+  const numPeriodsToDefault = interval === "Week" ? 11 : 2; // Default to 12 weeks (0-11) or 3 months (0-2)
 
-  const fromHeaderDetails = getHeaderDateRange(headers[0], interval);
-  const toHeaderDetails = getHeaderDateRange(headers[Math.min(numPeriodsToDefault, headers.length - 1)], interval);
+  const fromHeaderDetails = getHeaderDateRange(allHeaders[0], interval);
+  const toHeaderDetails = getHeaderDateRange(allHeaders[Math.min(numPeriodsToDefault, allHeaders.length - 1)], interval);
   
   let fromDate = fromHeaderDetails.startDate;
   let toDate = toHeaderDetails.endDate;
@@ -530,11 +534,10 @@ const findFiscalWeekHeaderForDate = (targetDate: Date, allFiscalHeaders: string[
   for (const header of allFiscalHeaders) {
     const { startDate, endDate } = getHeaderDateRange(header, "Week");
     if (startDate && endDate) {
-      const target = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
-      const sDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-      const eDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+      // Ensure targetDate is also treated as UTC for comparison
+      const targetUTC = new Date(Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate()));
       
-      if (target >= sDate && target <= eDate) {
+      if (targetUTC >= startDate && targetUTC <= endDate) {
         return header;
       }
     }
@@ -600,7 +603,7 @@ function AiGroupingDialog({ open, onOpenChange }: AiGroupingDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Zap className="h-6 w-6 text-primary" />
-            AI-Powered LoB Grouping Suggestions
+            Assumptions Assister
           </DialogTitle>
           <DialogDescription>
             Provide historical data and current business units to get AI-driven suggestions for optimal LoB groupings.
@@ -683,34 +686,48 @@ interface DateRangePickerProps extends React.HTMLAttributes<HTMLDivElement> {
   date: DateRange | undefined
   onDateChange: (date: DateRange | undefined) => void
   className?: string
+  allAvailablePeriods: string[];
 }
 
-function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps) {
-  const yearsInHeaders = ALL_WEEKS_HEADERS.map(h => {
+function DateRangePicker({ date, onDateChange, className, allAvailablePeriods }: DateRangePickerProps) {
+  const [clientButtonText, setClientButtonText] = useState<string>("Pick a date range");
+
+  const yearsInHeaders = allAvailablePeriods.map(h => {
     const match = h.match(/\((\d{4})\)$/);
     return match ? parseInt(match[1]) : 0;
   }).filter(y => y > 0);
   
-  const minYear = yearsInHeaders.length > 0 ? Math.min(...yearsInHeaders) : new Date().getFullYear();
-  const maxYear = yearsInHeaders.length > 0 ? Math.max(...yearsInHeaders) : new Date().getFullYear() + 1;
+  const minYear = yearsInHeaders.length > 0 ? Math.min(...yearsInHeaders) : new Date().getUTCFullYear();
+  const maxYear = yearsInHeaders.length > 0 ? Math.max(...yearsInHeaders) : new Date().getUTCFullYear() + 1;
   
-  const defaultCalendarMonth = date?.from || new Date(minYear, 0, 1);
+  const defaultCalendarMonth = date?.from || new Date(Date.UTC(minYear, 0, 1));
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') { // Ensure this runs only on client
+      let newButtonText = "Pick a date range";
+      if (date?.from) {
+        const fromFiscalHeader = findFiscalWeekHeaderForDate(date.from, allAvailablePeriods);
+        const fromWeekLabel = fromFiscalHeader ? fromFiscalHeader.split(':')[0].replace("FWk","W") : `W${getWeek(date.from, { weekStartsOn: 1 })}`;
+        const fromDateStr = `${date.from.getUTCDate().toString().padStart(2, '0')}/${(date.from.getUTCMonth() + 1).toString().padStart(2, '0')}/${date.from.getUTCFullYear()}`;
+        newButtonText = `${fromWeekLabel} (${fromDateStr})`;
 
-  let buttonText = "Pick a date range";
-  if (date?.from) {
-    const fromHeader = findFiscalWeekHeaderForDate(date.from, ALL_WEEKS_HEADERS);
-    const fromWeekLabel = fromHeader ? fromHeader.split(':')[0] : `W${getWeek(date.from, { weekStartsOn: 1 })}`; 
-    buttonText = `${fromWeekLabel} (${formatDateFn(date.from, "dd/MM/yyyy")})`;
-    if (date.to) {
-      const toHeader = findFiscalWeekHeaderForDate(date.to, ALL_WEEKS_HEADERS);
-      const toWeekLabel = toHeader ? toHeader.split(':')[0] : `W${getWeek(date.to, { weekStartsOn: 1 })}`;
-      
-      if (!isSameDay(date.from, date.to) && fromWeekLabel !== toWeekLabel) { 
-           buttonText += ` - ${toWeekLabel} (${formatDateFn(date.to, "dd/MM/yyyy")})`;
+        if (date.to) {
+          const toFiscalHeader = findFiscalWeekHeaderForDate(date.to, allAvailablePeriods);
+          const toWeekLabel = toFiscalHeader ? toFiscalHeader.split(':')[0].replace("FWk","W") : `W${getWeek(date.to, { weekStartsOn: 1 })}`;
+          const toDateStr = `${date.to.getUTCDate().toString().padStart(2, '0')}/${(date.to.getUTCMonth() + 1).toString().padStart(2, '0')}/${date.to.getUTCFullYear()}`;
+          
+          // Check if 'to' date is in a different week than 'from' date
+          const fromWeekStartForCompare = startOfWeek(date.from, { weekStartsOn: 1 });
+          const toWeekStartForCompare = startOfWeek(date.to, { weekStartsOn: 1 });
+
+          if (!isSameDay(fromWeekStartForCompare, toWeekStartForCompare)) { 
+               newButtonText += ` - ${toWeekLabel} (${toDateStr})`;
+          }
+        }
       }
+      setClientButtonText(newButtonText);
     }
-  }
+  }, [date, allAvailablePeriods]);
 
 
   return (
@@ -726,7 +743,7 @@ function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps
             )}
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
-            <span>{buttonText}</span>
+            <span>{clientButtonText}</span>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
@@ -779,6 +796,10 @@ function HeaderSection({
   onSelectTimeInterval,
   selectedDateRange,
   onSelectDateRange,
+  allAvailablePeriods,
+  displayedPeriodHeaders,
+  activeHierarchyContext,
+  headerPeriodScrollerRef,
 }: HeaderSectionProps) { 
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
 
@@ -804,7 +825,7 @@ function HeaderSection({
 
   return (
     <TooltipProvider>
-      <header className="p-4 border-b border-border bg-background"> 
+      <header className="sticky top-0 z-50 bg-background p-4 border-b border-border"> 
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
           <h1 className="text-2xl font-semibold text-foreground">Capacity Insights</h1>
           <div className="flex flex-wrap items-center gap-2">
@@ -817,76 +838,123 @@ function HeaderSection({
               <TooltipContent><p>Export current view as CSV (not implemented)</p></TooltipContent>
             </Tooltip>
             <Button variant="default" size="sm" onClick={() => setIsAiDialogOpen(true)}>
-              <Zap className="mr-2" /> Suggest LoB Groupings
+              <Zap className="mr-2" /> Assumptions Assister
             </Button>
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-center gap-x-4 gap-y-2">
-          <Select value={selectedBusinessUnit} onValueChange={onSelectBusinessUnit}>
-            <SelectTrigger className="w-full lg:w-[180px] text-sm h-9">
-              <Building2 className="mr-2 opacity-70" />
-              <SelectValue placeholder="Business Unit" />
-            </SelectTrigger>
-            <SelectContent>
-              {filterOptions.businessUnits.map((bu) => (
-                <SelectItem key={bu} value={bu}>
-                  {bu}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end gap-x-4 gap-y-2">
+          <div className="flex flex-col gap-1.5">
+             <Label className="text-xs text-muted-foreground">Business Unit</Label>
+            <Select value={selectedBusinessUnit} onValueChange={onSelectBusinessUnit}>
+              <SelectTrigger className="w-full lg:w-[180px] text-sm h-9">
+                <Building2 className="mr-2 opacity-70" />
+                <SelectValue placeholder="Business Unit" />
+              </SelectTrigger>
+              <SelectContent>
+                {filterOptions.businessUnits.map((bu) => (
+                  <SelectItem key={bu} value={bu}>
+                    {bu}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="w-full lg:w-[240px] text-sm h-9 justify-between">
-                <div className="flex items-center truncate">
-                  <Briefcase className="mr-2 opacity-70 flex-shrink-0" />
-                  <span className="truncate" title={lobDropdownLabel}>{lobDropdownLabel}</span>
-                </div>
-                <ChevronDown className="h-4 w-4 opacity-50 flex-shrink-0" />
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Line of Business</Label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full lg:w-[240px] text-sm h-9 justify-between">
+                  <div className="flex items-center truncate">
+                    <Briefcase className="mr-2 opacity-70 flex-shrink-0" />
+                    <span className="truncate" title={lobDropdownLabel}>{lobDropdownLabel}</span>
+                  </div>
+                  <ChevronDown className="h-4 w-4 opacity-50 flex-shrink-0" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-full md:w-[240px]">
+                <DropdownMenuLabel>Select Lines of Business</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {actualLobsForCurrentBu.length > 0 ? (
+                  actualLobsForCurrentBu.map((lob) => (
+                    <DropdownMenuCheckboxItem
+                      key={lob}
+                      checked={selectedLineOfBusiness.includes(lob)}
+                      onCheckedChange={(checked) => handleLobSelectionChange(lob, Boolean(checked))}
+                      onSelect={(e) => e.preventDefault()} 
+                    >
+                      {lob}
+                    </DropdownMenuCheckboxItem>
+                  ))
+                ) : (
+                  <DropdownMenuItem disabled>No LOBs available for {selectedBusinessUnit}</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Interval</Label>
+            <div className="flex items-center gap-2 border rounded-md p-1 bg-muted">
+              <Button
+                variant={selectedTimeInterval === "Week" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => onSelectTimeInterval("Week")}
+                className="h-7 px-3"
+              >
+                Week
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-full md:w-[240px]">
-              <DropdownMenuLabel>Select Lines of Business</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {actualLobsForCurrentBu.length > 0 ? (
-                actualLobsForCurrentBu.map((lob) => (
-                  <DropdownMenuCheckboxItem
-                    key={lob}
-                    checked={selectedLineOfBusiness.includes(lob)}
-                    onCheckedChange={(checked) => handleLobSelectionChange(lob, Boolean(checked))}
-                    onSelect={(e) => e.preventDefault()} 
-                  >
-                    {lob}
-                  </DropdownMenuCheckboxItem>
-                ))
-              ) : (
-                <DropdownMenuItem disabled>No LOBs available for {selectedBusinessUnit}</DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <div className="flex items-center gap-2 border rounded-md p-1 bg-muted">
-            <Button
-              variant={selectedTimeInterval === "Week" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => onSelectTimeInterval("Week")}
-              className="h-7 px-3"
-            >
-              Week
-            </Button>
-            <Button
-              variant={selectedTimeInterval === "Month" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => onSelectTimeInterval("Month")}
-              className="h-7 px-3"
-            >
-              Month
-            </Button>
+              <Button
+                variant={selectedTimeInterval === "Month" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => onSelectTimeInterval("Month")}
+                className="h-7 px-3"
+              >
+                Month
+              </Button>
+            </div>
           </div>
-          <DateRangePicker date={selectedDateRange} onDateChange={onSelectDateRange} />
+          <div className="flex flex-col gap-1.5">
+             <Label className="text-xs text-muted-foreground">Date Range</Label>
+            <DateRangePicker date={selectedDateRange} onDateChange={onSelectDateRange} allAvailablePeriods={allAvailablePeriods} />
+          </div>
         </div>
+        
+        {/* Combined Table Header Row */}
+        <div className="mt-4 flex items-stretch border-b border-border bg-card h-12">
+          <div className="sticky left-0 z-55 bg-card min-w-[320px] px-4 py-2 flex items-center border-r border-border/50">
+            <span className="text-sm font-medium text-muted-foreground truncate">{activeHierarchyContext}</span>
+          </div>
+          <div ref={headerPeriodScrollerRef} className="flex-grow overflow-x-auto scrollbar-hide whitespace-nowrap flex items-stretch">
+            {displayedPeriodHeaders.map((period) => {
+              const parts = period.split(': ');
+              const weekLabelPart = parts[0].replace("FWk", "W"); 
+              let dateRangePart = "";
+              if (parts.length > 1) {
+                const dateAndYearPart = parts[1];
+                const dateMatch = dateAndYearPart.match(/^(\d{2}\/\d{2}-\d{2}\/\d{2})/);
+                if (dateMatch) {
+                  dateRangePart = dateMatch[1];
+                }
+              }
+              return (
+                <div
+                  key={period}
+                  className="min-w-[100px] px-2 py-2 flex flex-col items-end justify-center text-right border-l border-border/50 h-full"
+                >
+                  <span className="text-sm font-medium">{weekLabelPart}</span>
+                  {dateRangePart && (
+                    <span className="text-xs text-muted-foreground">
+                      ({dateRangePart})
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <AiGroupingDialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen} />
       </header>
     </TooltipProvider>
@@ -903,10 +971,12 @@ interface CapacityTableProps {
   teamMetricDefinitions: TeamMetricDefinitions; 
   aggregatedMetricDefinitions: AggregatedMetricDefinitions;
   onTeamMetricChange: (lobId: string, teamName: TeamName, periodHeader: string, metricKey: keyof TeamPeriodicMetrics, newValue: string) => void;
-  onLobMetricChange: (lobId: string, periodHeader: string, metricKey: 'lobTotalBaseRequiredMinutes', newValue: string) => void;
+  onLobMetricChange: (lobId: string, periodHeader: string, metricKey: 'lobVolumeForecast' | 'lobAverageAHT' | 'lobTotalBaseRequiredMinutes', newValue: string) => void;
   editingCell: { id: string; period: string; metricKey: string } | null;
   onSetEditingCell: (id: string | null, period: string | null, metricKey: string | null) => void;
   selectedTimeInterval: TimeInterval;
+  onActiveHierarchyChange: (hierarchy: string | null) => void;
+  tableBodyScrollRef: React.RefObject<HTMLDivElement>;
 }
 
 interface MetricCellContentProps {
@@ -937,14 +1007,21 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
 
   const rawValue = metricData ? (metricData as any)[metricDef.key] : null;
 
-  const canEditCell = (item.itemType === 'Team' && metricDef.isEditableForTeam && !metricDef.isDisplayOnly) ||
-                      (item.itemType === 'LOB' && metricDef.key === 'lobTotalBaseRequiredMinutes' && !metricDef.isDisplayOnly);
+  let canEditCell = false;
+  if (item.itemType === 'Team' && metricDef.isEditableForTeam && !metricDef.isDisplayOnly) {
+    canEditCell = true;
+  } else if (item.itemType === 'LOB' && metricDef.isEditableForLob && !metricDef.isDisplayOnly) {
+    canEditCell = true;
+  }
+
 
   useEffect(() => {
     if (isEditing) {
       setTempValue(rawValue === null || rawValue === undefined ? "" : String(rawValue));
       if (inputRef.current) {
         inputRef.current.focus();
+        // Select all text in input on focus
+        inputRef.current.select();
       }
     } else {
       setTempValue(null);
@@ -971,10 +1048,15 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
   };
 
   const handleSave = () => {
-    if (item.itemType === 'Team' && metricDef.isEditableForTeam && !metricDef.isDisplayOnly && item.lobId && tempValue !== null) {
+    if (tempValue === null) { // If no change, or cleared
+      onSetEditingCell(null, null, null);
+      return;
+    }
+
+    if (item.itemType === 'Team' && metricDef.isEditableForTeam && !metricDef.isDisplayOnly && item.lobId) {
       onTeamMetricChange(item.lobId, item.name as TeamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, tempValue);
-    } else if (item.itemType === 'LOB' && metricDef.key === 'lobTotalBaseRequiredMinutes' && !metricDef.isDisplayOnly && tempValue !== null) {
-      onLobMetricChange(item.id, periodName, metricDef.key as 'lobTotalBaseRequiredMinutes', tempValue);
+    } else if (item.itemType === 'LOB' && metricDef.isEditableForLob && !metricDef.isDisplayOnly) {
+      onLobMetricChange(item.id, periodName, metricDef.key as 'lobVolumeForecast' | 'lobAverageAHT' | 'lobTotalBaseRequiredMinutes', tempValue);
     }
     setTempValue(null);
     onSetEditingCell(null, null, null);
@@ -987,6 +1069,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
+      e.preventDefault(); // Prevent form submission if any
       handleSave();
     } else if (e.key === 'Escape') {
       handleCancel();
@@ -1001,7 +1084,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
         onChange={handleInputChange}
         onBlur={handleSave} 
         onKeyDown={handleKeyDown}
-        className="h-8 w-full max-w-[100px] text-right tabular-nums px-1 py-0.5 text-xs bg-background border-input focus:border-primary focus:ring-1 focus:ring-primary group-hover:border-primary"
+        className="h-7 w-full max-w-[100px] text-right tabular-nums px-1 py-0.5 text-xs bg-background border-input focus:border-primary focus:ring-1 focus:ring-primary group-hover:border-primary"
         step={metricDef.step || "any"}
         autoFocus
         ref={inputRef}
@@ -1009,12 +1092,29 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
     );
   }
 
-  const shouldDisplayMetric = (item.itemType === 'Team' && TEAM_METRIC_ROW_DEFINITIONS.some(def => def.key === metricDef.key)) ||
-                              ((item.itemType === 'BU' || item.itemType === 'LOB') && AGGREGATED_METRIC_ROW_DEFINITIONS.some(def => def.key === metricDef.key));
+  let shouldDisplayMetric = false;
+  if (item.itemType === 'Team' && TEAM_METRIC_ROW_DEFINITIONS.some(def => def.key === metricDef.key && def.category !== 'Internal')) {
+    shouldDisplayMetric = true;
+  } else if ((item.itemType === 'BU' || item.itemType === 'LOB') && AGGREGATED_METRIC_ROW_DEFINITIONS.some(def => def.key === metricDef.key)) {
+    if (item.itemType === 'BU' && metricDef.key === 'lobTotalBaseRequiredMinutes') { // Don't show LOB base req for BU
+       shouldDisplayMetric = false;
+    } else if (item.itemType === 'BU' && metricDef.key === 'lobVolumeForecast') {
+       shouldDisplayMetric = false;
+    } else if (item.itemType === 'BU' && metricDef.key === 'lobAverageAHT') {
+       shouldDisplayMetric = false;
+    }
+    else {
+       shouldDisplayMetric = true;
+    }
+  }
+
 
   if (!shouldDisplayMetric || rawValue === null || rawValue === undefined) {
     const isEditableEmptyCell = canEditCell;
-    return <div onClick={isEditableEmptyCell ? handleEditClick : undefined} className={`${isEditableEmptyCell ? 'cursor-pointer group' : ''} w-full h-full flex items-center justify-end pr-1`}>
+    return <div 
+              onClick={isEditableEmptyCell ? handleEditClick : undefined} 
+              className={`${isEditableEmptyCell ? 'cursor-pointer group relative' : ''} w-full h-full flex items-center justify-end pr-1`} // Added relative for icon
+           >
       <Minus className="h-4 w-4 text-muted-foreground mx-auto" />
       {isEditableEmptyCell && <Edit3 className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity absolute right-1 top-1/2 -translate-y-1/2" />}
       </div>;
@@ -1033,28 +1133,33 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
 
   if (metricDef.isPercentage) {
     displayValue = `${numValue.toFixed(1)}%`;
-  } else if (metricDef.isTime && metricDef.key === 'aht') { 
+  } else if (metricDef.isTime && (metricDef.key === 'aht' || metricDef.key === 'lobAverageAHT')) { 
     displayValue = `${numValue.toFixed(1)} min`;
+  } else if (metricDef.isTime && (metricDef.key === '_calculatedRequiredAgentMinutes' || metricDef.key === '_calculatedActualProductiveAgentMinutes' || metricDef.key === 'lobTotalBaseRequiredMinutes')) {
+    displayValue = `${numValue.toFixed(0)} min`;
   } else if (metricDef.isHC || ['moveIn', 'moveOut', 'newHireBatch', 'newHireProduction', 'attritionLossHC', 'endingHC', 'hcAfterAttrition'].includes(metricDef.key as string)) {
     const digits = (['moveIn', 'moveOut', 'newHireBatch', 'newHireProduction'].includes(metricDef.key as string)) ? 0 : 2;
     displayValue = isNaN(numValue) ? '-' : numValue.toFixed(digits);
-  } else if (metricDef.key === '_calculatedRequiredAgentMinutes' || metricDef.key === '_calculatedActualProductiveAgentMinutes' || metricDef.key === 'lobTotalBaseRequiredMinutes') {
-    let totalMinutes = numValue;
-    displayValue = `${totalMinutes.toFixed(0)} min`;
+  } else if (metricDef.isCount) { // For LOB Volume Forecast
+     displayValue = isNaN(numValue) ? '-' : numValue.toFixed(0);
   } else if (typeof numValue === 'number' && !isNaN(numValue)) {
-    const fractionDigits = (['overUnderHC', 'requiredHC', 'actualHC'].includes(metricDef.key as string)) ? 2 : 1;
+    const fractionDigits = (['overUnderHC', 'requiredHC', 'actualHC'].includes(metricDef.key as string)) ? 2 : 0; // Default to 0 for other numbers
     displayValue = numValue.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
   } else {
     displayValue = String(rawValue);
   }
 
   let baseTooltipText = `${item.name} - ${periodName}\n${metricDef.label}: ${displayValue}`;
+  if (metricDef.description && item.itemType === 'Team') { // Only add general description for team assumptions
+    baseTooltipText += `\n${metricDef.description}`;
+  }
+
 
   if (item.itemType === 'Team') {
     switch (metricDef.key) {
       case 'requiredHC':
         if (teamMetrics?._calculatedRequiredAgentMinutes !== null && teamMetrics?._calculatedRequiredAgentMinutes !== undefined &&
-            teamMetrics?.shrinkagePercentage !== null && teamMetrics?.occupancyPercentage !== null && standardWorkMinutesForPeriod > 0) {
+            teamMetrics?.shrinkagePercentage !== null && teamMetrics?.occupancyPercentage !== null && teamMetrics?.occupancyPercentage > 0 && standardWorkMinutesForPeriod > 0) {
           const effMinsPerHC = standardWorkMinutesForPeriod * (1 - (teamMetrics.shrinkagePercentage / 100)) * (teamMetrics.occupancyPercentage / 100);
           if (effMinsPerHC > 0) {
             formulaText = `Formula: Eff. Req. Mins / (Std Mins * (1-Shrink%) * Occupancy%)\n` +
@@ -1119,6 +1224,22 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
           formulaText = `Formula: Aggregated Actual HC - Aggregated Required HC\nCalc: ${aggMetrics.actualHC.toFixed(2)} - ${aggMetrics.requiredHC.toFixed(2)} = ${numValue.toFixed(2)}`;
         }
         break;
+      case 'requiredHC':
+      case 'actualHC':
+        const childType = item.itemType === 'BU' ? 'LOBs' : 'Teams';
+        const childNames = item.children?.map(child => child.name).join(', ') || 'N/A';
+        formulaText = `Formula: SUM(${metricDef.label} from child ${childType})\nContributing: ${childNames}`;
+        break;
+      case 'lobTotalBaseRequiredMinutes':
+        if (item.itemType === 'LOB' && aggMetrics && 'lobVolumeForecast' in aggMetrics && 'lobAverageAHT' in aggMetrics) {
+            const volume = aggMetrics.lobVolumeForecast;
+            const aht = aggMetrics.lobAverageAHT;
+            const calculatedMins = (typeof volume === 'number' && typeof aht === 'number' && volume > 0 && aht > 0) ? volume * aht : numValue; // Use numValue if direct input
+             formulaText = `Formula: LOB Volume Forecast * LOB Avg AHT\n` +
+                           `Calc: ${volume?.toFixed(0) ?? 'N/A'} * ${aht?.toFixed(1) ?? 'N/A'} = ${calculatedMins.toFixed(0)}\n` +
+                           `(Current value may be a direct input or calculated)`;
+        }
+        break;
     }
   }
 
@@ -1177,14 +1298,22 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
   return (
     <TableRow className="hover:bg-muted/50">
       <TableCell
-        className="sticky left-0 z-20 bg-card font-normal text-foreground whitespace-nowrap py-2"
+        className="sticky left-0 z-20 bg-card font-normal text-foreground whitespace-nowrap py-2 border-r border-border/50"
         style={{ paddingLeft: `${level * 1.5 + 0.5}rem`, paddingRight: '1rem' }}
       >
-        <span className="flex items-center gap-2">
-          {metricDef.label}
-          {item.itemType === 'Team' && metricDef.isEditableForTeam && !metricDef.isDisplayOnly && <Edit3 className="h-3 w-3 text-muted-foreground opacity-50" />}
-          {item.itemType === 'LOB' && metricDef.key === 'lobTotalBaseRequiredMinutes' && !metricDef.isDisplayOnly && <Edit3 className="h-3 w-3 text-muted-foreground opacity-50" />}
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-2">
+              <span>{metricDef.label}</span>
+              {(item.itemType === 'Team' && metricDef.isEditableForTeam && !metricDef.isDisplayOnly) && <Edit3 className="h-3 w-3 text-muted-foreground opacity-50" />}
+              {(item.itemType === 'LOB' && metricDef.isEditableForLob && !metricDef.isDisplayOnly) && <Edit3 className="h-3 w-3 text-muted-foreground opacity-50" />}
+            </div>
+          </TooltipTrigger>
+           <TooltipContent className="whitespace-pre-wrap text-xs max-w-xs">
+            <p>{metricDef.label}</p>
+            {metricDef.description && (<p className="text-muted-foreground mt-1">{metricDef.description}</p>)}
+          </TooltipContent>
+        </Tooltip>
       </TableCell>
       {periodHeaders.map((periodHeader) => {
         const metricForPeriod = item.periodicData[periodHeader];
@@ -1195,7 +1324,11 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
             else if (value > 0.001) cellTextColor = "text-primary"; 
         }
         
-        const currentEditId = item.itemType === 'Team' && item.lobId ? `${item.lobId}_${item.name.replace(/\s+/g, '-')}` : item.id;
+        let currentEditId = item.id; // Default for BU/LOB
+        if (item.itemType === 'Team' && item.lobId) { // Construct specific ID for team to allow editing
+            currentEditId = `${item.lobId}_${item.name.replace(/\s+/g, '-')}`;
+        }
+        
         const isCurrentlyEditing = 
           editingCell?.id === currentEditId &&
           editingCell?.period === periodHeader &&
@@ -1204,7 +1337,7 @@ const MetricRow: React.FC<MetricRowProps> = React.memo(({ item, metricDef, level
         return (
           <TableCell
             key={`${item.id}-${metricDef.key}-${periodHeader}`}
-            className={`text-right tabular-nums ${cellTextColor} py-2 px-2`}
+            className={`text-right tabular-nums ${cellTextColor} py-2 px-2 min-w-[100px] border-l border-border/50`}
           >
             <MetricCellContent
                 item={item}
@@ -1237,43 +1370,154 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
   editingCell,
   onSetEditingCell,
   selectedTimeInterval,
+  onActiveHierarchyChange,
+  tableBodyScrollRef,
 }) => {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null); 
+  const itemNameRowRefs = useRef<Map<string, HTMLTableRowElement | null>>(new Map());
+  const headerHeight = 48; // Approximate height of the sticky header row in HeaderSection
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const intersectingItem = entries
+          .filter(entry => entry.isIntersecting)
+          .map(entry => ({
+            id: (entry.target as HTMLElement).dataset.itemId || '',
+            name: (entry.target as HTMLElement).dataset.itemName || '',
+            type: (entry.target as HTMLElement).dataset.itemType || '',
+            top: entry.target.getBoundingClientRect().top,
+          }))
+          .sort((a, b) => a.top - b.top) // Find the one closest to the top
+          .find(item => item.top >= headerHeight -5 && item.top < headerHeight + 150); // Check if it's just below the sticky header
+
+        if (intersectingItem) {
+          onActiveHierarchyChange(`${intersectingItem.type}: ${intersectingItem.name}`);
+        } else {
+          onActiveHierarchyChange(null); // Reset if no relevant item is at the top
+        }
+      },
+      { 
+        root: scrollContainerRef.current, // Observe within the table's scroll container
+        rootMargin: `-${headerHeight -1}px 0px -80% 0px`, // Item must be just below header
+        threshold: [0, 0.1, 0.9, 1.0] // Trigger at various visibility points
+      }
+    );
+
+    itemNameRowRefs.current.forEach(rowElement => {
+      if (rowElement) observer.observe(rowElement);
+    });
+
+    return () => {
+      itemNameRowRefs.current.forEach(rowElement => {
+        if (rowElement) observer.unobserve(rowElement);
+      });
+      observer.disconnect();
+    };
+  }, [data, periodHeaders, expandedItems, onActiveHierarchyChange, headerHeight]); // Re-observe if data/structure changes
+  
+  
+  const renderSubSection = (
+    parentId: string, 
+    subSectionTitle: string, 
+    metrics: MetricDefinition[], 
+    item: CapacityDataRow, 
+    level: number
+  ) => {
+    const subSectionId = `${parentId}_${subSectionTitle.replace(/\s+/g, '')}`;
+    const isSubSectionExpanded = expandedItems[subSectionId] || false;
+    const rows: React.ReactNode[] = [];
+
+    rows.push(
+      <TableRow key={subSectionId + "_header"} className="hover:bg-muted/30 bg-muted/20">
+        <TableCell 
+          className="sticky left-0 z-25 bg-muted/20 font-medium text-foreground whitespace-nowrap py-2 border-r border-border/50"
+          style={{ paddingLeft: `${level * 1.5 + 0.5}rem`, paddingRight: '1rem' }}
+        >
+          <button
+            onClick={() => toggleExpand(subSectionId)}
+            className="w-full text-left flex items-center gap-2 text-sm"
+          >
+            <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isSubSectionExpanded ? "rotate-180" : ""}`} />
+            {subSectionTitle}
+          </button>
+        </TableCell>
+        {periodHeaders.map(ph => <TableCell key={`${subSectionId}_${ph}_placeholder`} className="py-2 px-2 min-w-[100px] border-l border-border/50"></TableCell>)}
+      </TableRow>
+    );
+
+    if (isSubSectionExpanded) {
+      metrics.forEach(metricDef => {
+        rows.push(
+          <MetricRow
+            key={`${parentId}-${metricDef.key}`}
+            item={item}
+            metricDef={metricDef}
+            level={level + 1} 
+            periodHeaders={periodHeaders}
+            onTeamMetricChange={onTeamMetricChange}
+            onLobMetricChange={onLobMetricChange}
+            editingCell={editingCell}
+            onSetEditingCell={onSetEditingCell}
+            selectedTimeInterval={selectedTimeInterval}
+          />
+        );
+      });
+    }
+    return rows;
+  };
   
   const renderCapacityItemContent = useCallback((item: CapacityDataRow): React.ReactNode[] => {
     const rows: React.ReactNode[] = [];
-    let metricDefinitionsToUse: MetricDefinition[];
-
+    
     if (item.itemType === 'Team') {
-      metricDefinitionsToUse = teamMetricDefinitions;
-    } else {
-      metricDefinitionsToUse = aggregatedMetricDefinitions;
-    }
+      const primaryHcMetrics = teamMetricDefinitions.filter(def => def.category === 'PrimaryHC');
+      primaryHcMetrics.forEach(metricDef => {
+        rows.push(
+          <MetricRow
+            key={`${item.id}-${metricDef.key}`}
+            item={item}
+            metricDef={metricDef}
+            level={item.level + 1}
+            periodHeaders={periodHeaders}
+            onTeamMetricChange={onTeamMetricChange}
+            onLobMetricChange={onLobMetricChange}
+            editingCell={editingCell}
+            onSetEditingCell={onSetEditingCell}
+            selectedTimeInterval={selectedTimeInterval}
+          />
+        );
+      });
 
-    metricDefinitionsToUse.forEach(metricDef => {
-      if (item.itemType === 'BU' && metricDef.key === 'lobTotalBaseRequiredMinutes') {
-        return;
-      }
-      if (item.itemType === 'LOB' && metricDef.key === 'lobTotalBaseRequiredMinutes') {
-        return; 
-      }
-      rows.push(
-        <MetricRow
-          key={`${item.id}-${metricDef.key}`}
-          item={item}
-          metricDef={metricDef}
-          level={item.level + 1} 
-          periodHeaders={periodHeaders}
-          onTeamMetricChange={onTeamMetricChange}
-          onLobMetricChange={onLobMetricChange}
-          editingCell={editingCell}
-          onSetEditingCell={onSetEditingCell}
-          selectedTimeInterval={selectedTimeInterval}
-        />
-      );
-    });
+      const assumptionMetrics = teamMetricDefinitions.filter(def => def.category === 'Assumption');
+      rows.push(...renderSubSection(item.id, "Assumptions", assumptionMetrics, item, item.level + 1));
+      
+      const adjustmentMetrics = teamMetricDefinitions.filter(def => def.category === 'HCAdjustment');
+      rows.push(...renderSubSection(item.id, "HC Adjustments", adjustmentMetrics, item, item.level + 1));
+
+    } else { // BU or LOB
+      aggregatedMetricDefinitions.forEach(metricDef => {
+        if (item.itemType === 'BU' && (metricDef.key === 'lobTotalBaseRequiredMinutes' || metricDef.key === 'lobVolumeForecast' || metricDef.key === 'lobAverageAHT')) {
+           return; 
+        }
+        rows.push(
+          <MetricRow
+            key={`${item.id}-${metricDef.key}`}
+            item={item}
+            metricDef={metricDef}
+            level={item.level + 1} 
+            periodHeaders={periodHeaders}
+            onTeamMetricChange={onTeamMetricChange}
+            onLobMetricChange={onLobMetricChange}
+            editingCell={editingCell}
+            onSetEditingCell={onSetEditingCell}
+            selectedTimeInterval={selectedTimeInterval}
+          />
+        );
+      });
+    }
     return rows;
-  }, [periodHeaders, teamMetricDefinitions, aggregatedMetricDefinitions, onTeamMetricChange, onLobMetricChange, editingCell, onSetEditingCell, selectedTimeInterval]);
+  }, [periodHeaders, teamMetricDefinitions, aggregatedMetricDefinitions, onTeamMetricChange, onLobMetricChange, editingCell, onSetEditingCell, selectedTimeInterval, expandedItems, toggleExpand]);
 
   const renderTableItem = useCallback((item: CapacityDataRow): React.ReactNode[] => {
     const rows: React.ReactNode[] = [];
@@ -1281,7 +1525,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
 
     let isExpandable = (item.children && item.children.length > 0) || item.itemType === 'Team';
 
-    let rowSpecificBgClass = '';
+    let rowSpecificBgClass = 'bg-card'; // Default for team metric rows (no special bg for them)
     let buttonTextClass = 'text-foreground';
     let itemZIndex = 20; 
 
@@ -1299,21 +1543,25 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
       itemZIndex = 25;
     }
 
-    const hoverClass = item.itemType !== 'BU' ? 'hover:bg-muted/70' : 'hover:bg-secondary/80';
+    const hoverClass = item.itemType === 'BU' ? 'hover:bg-secondary/90' 
+                      : item.itemType === 'LOB' ? 'hover:bg-muted/80'
+                      : 'hover:bg-muted/60'; // Team header row
 
     rows.push(
       <TableRow
         key={`${item.id}-name`}
         className={cn(rowSpecificBgClass, hoverClass)}
+        ref={el => { if (el) itemNameRowRefs.current.set(item.id, el); else itemNameRowRefs.current.delete(item.id); }}
+        data-item-id={item.id}
+        data-item-name={item.name}
+        data-item-type={item.itemType}
       >
         <TableCell
           className={cn(
-            "p-0 sticky left-0 whitespace-nowrap",
-            rowSpecificBgClass || 'bg-card' 
+            "p-0 sticky left-0 whitespace-nowrap border-r border-border/50",
+            rowSpecificBgClass 
           )}
-          style={{
-            zIndex: itemZIndex, 
-          }}
+          style={{ zIndex: itemZIndex }}
         >
           <button
             onClick={isExpandable ? () => toggleExpand(item.id) : undefined}
@@ -1331,10 +1579,10 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
             {item.name}
           </button>
         </TableCell>
-        {periodHeaders.map((ph, index) => (
+        {periodHeaders.map((ph) => (
           <TableCell
             key={`${item.id}-${ph}-nameplaceholder`}
-            className={cn(rowSpecificBgClass, 'py-3')} 
+            className={cn(rowSpecificBgClass, 'py-3 px-2 min-w-[100px] border-l border-border/50')} 
           ></TableCell>
         ))}
       </TableRow>
@@ -1358,50 +1606,15 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
       const itemMetricRows = renderCapacityItemContent(item);
       rows.push(...itemMetricRows);
     }
-
-
     return rows;
   }, [expandedItems, periodHeaders, toggleExpand, renderCapacityItemContent, teamMetricDefinitions, aggregatedMetricDefinitions]);
 
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div ref={scrollContainerRef} className="overflow-x-auto relative border border-border rounded-md shadow-md">
+      <div ref={tableBodyScrollRef} className="overflow-x-auto relative">
         <Table className="min-w-full">
-          <TableHeader className="sticky top-0 z-[45] bg-card">
-            <TableRow>
-              <TableHead className="sticky left-0 z-50 bg-card min-w-[320px] whitespace-nowrap px-4 py-2 align-middle">
-                BU / LoB / Team / Metric
-              </TableHead>
-              {periodHeaders.map((period, index) => {
-                const parts = period.split(': ');
-                const weekLabelPart = parts[0].replace("FWk", "W"); 
-                let dateRangePart = "";
-                if (parts.length > 1) {
-                  const dateAndYearPart = parts[1];
-                  const dateMatch = dateAndYearPart.match(/^(\d{2}\/\d{2}-\d{2}\/\d{2})/);
-                  if (dateMatch) {
-                    dateRangePart = dateMatch[1];
-                  }
-                }
-                return (
-                  <TableHead
-                    key={period}
-                    className="text-right min-w-[100px] px-2 py-2 align-middle"
-                  >
-                    <div className="flex flex-col items-end">
-                      <span className="text-sm font-medium">{weekLabelPart}</span>
-                      {dateRangePart && (
-                        <span className="text-xs text-muted-foreground">
-                          ({dateRangePart})
-                        </span>
-                      )}
-                    </div>
-                  </TableHead>
-                );
-              })}
-            </TableRow>
-          </TableHeader>
+          {/* TableHeader is removed as it's now part of HeaderSection */}
           <TableBody>
             {data.length > 0 ? (
               data.flatMap(item => renderTableItem(item))
@@ -1434,7 +1647,7 @@ export default function CapacityInsightsPage() {
   });
 
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
-  const [selectedDateRange, setSelectedDateRange] = React.useState<DateRange | undefined>(() => getDefaultDateRange("Week"));
+  const [selectedDateRange, setSelectedDateRange] = React.useState<DateRange | undefined>(() => getDefaultDateRange("Week", ALL_WEEKS_HEADERS));
   
   const [filterOptions, setFilterOptions] = useState<FilterOptions>(() => ({
       businessUnits: [...ALL_BUSINESS_UNITS],
@@ -1446,6 +1659,16 @@ export default function CapacityInsightsPage() {
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   
   const [editingCell, setEditingCell] = useState<{ id: string; period: string; metricKey: string } | null>(null);
+
+  const [activeHierarchyContext, setActiveHierarchyContext] = useState<string>("BU / LoB / Team / Metric");
+  const headerPeriodScrollerRef = useRef<HTMLDivElement>(null);
+  const tableBodyScrollRef = useRef<HTMLDivElement>(null);
+  const isSyncingScroll = useRef(false);
+
+  const handleActiveHierarchyChange = useCallback((newContext: string | null) => { 
+    setActiveHierarchyContext(newContext || "BU / LoB / Team / Metric"); 
+  }, []);
+
 
   const handleSetEditingCell = useCallback((id: string | null, period: string | null, metricKey: string | null) => {
     if (id && period && metricKey) {
@@ -1558,7 +1781,7 @@ export default function CapacityInsightsPage() {
   const handleLobMetricChange = useCallback((
     lobId: string,
     periodHeader: string,
-    metricKey: 'lobTotalBaseRequiredMinutes',
+    metricKey: 'lobVolumeForecast' | 'lobAverageAHT' | 'lobTotalBaseRequiredMinutes',
     rawValue: string 
   ) => {
     const newValueParsed = rawValue === "" || rawValue === "-" ? null : parseFloat(rawValue);
@@ -1570,15 +1793,32 @@ export default function CapacityInsightsPage() {
 
     setRawCapacityDataSource(prevRawData => {
       const newData = JSON.parse(JSON.stringify(prevRawData)) as RawLoBCapacityEntry[];
-      const lobEntryIndex = newData.findIndex(lob => lob.id === lobId);
-      if (lobEntryIndex === -1) return prevRawData;
+      const lobEntry = newData.find(lob => lob.id === lobId);
+      if (!lobEntry) return prevRawData;
 
-      const lobEntry = newData[lobEntryIndex];
-      
-      if (!lobEntry.lobTotalBaseRequiredMinutes) {
-        lobEntry.lobTotalBaseRequiredMinutes = {};
+      if (metricKey === 'lobVolumeForecast' || metricKey === 'lobAverageAHT') {
+        if (!lobEntry[metricKey]) { // Initialize if undefined
+          (lobEntry as any)[metricKey] = {};
+        }
+        (lobEntry[metricKey] as any)[periodHeader] = newValue;
+        
+        // Recalculate lobTotalBaseRequiredMinutes
+        const volume = lobEntry.lobVolumeForecast?.[periodHeader];
+        const aht = lobEntry.lobAverageAHT?.[periodHeader];
+        if (typeof volume === 'number' && volume > 0 && typeof aht === 'number' && aht > 0) {
+          if (!lobEntry.lobTotalBaseRequiredMinutes) lobEntry.lobTotalBaseRequiredMinutes = {};
+          lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = volume * aht;
+        } else if (volume === null || aht === null || volume === 0 || aht === 0) { // If inputs are cleared or zero, clear calculated total
+            if (!lobEntry.lobTotalBaseRequiredMinutes) lobEntry.lobTotalBaseRequiredMinutes = {};
+            lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = null; // Or 0, depending on desired behavior
+        }
+         // If one is valid and other is not, lobTotalBaseRequiredMinutes remains unchanged from direct input or previous calc
+      } else if (metricKey === 'lobTotalBaseRequiredMinutes') {
+        if (!lobEntry.lobTotalBaseRequiredMinutes) {
+          lobEntry.lobTotalBaseRequiredMinutes = {};
+        }
+        lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = newValue;
       }
-      lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = newValue;
       
       return newData;
     });
@@ -1586,38 +1826,8 @@ export default function CapacityInsightsPage() {
 
   const handleBusinessUnitChange = useCallback((bu: BusinessUnitName) => {
     setSelectedBusinessUnit(bu);
-    const newBuConfig = BUSINESS_UNIT_CONFIG[bu];
-    let newSelectedLobs: string[];
-
-    if (bu === "WFS") {
-      newSelectedLobs = defaultWFSLoBs.filter(lob => newBuConfig.lonsOfBusiness.includes(lob as LineOfBusinessName<"WFS">));
-    } else {
-      newSelectedLobs = [...newBuConfig.lonsOfBusiness];
-    }
-    
-    setSelectedLineOfBusiness(prevLobs => {
-        const sortedNew = [...newSelectedLobs].sort();
-        const currentLobsForNewBu = [...newBuConfig.lonsOfBusiness].sort();
-        if(JSON.stringify(sortedNew) !== JSON.stringify(currentLobsForNewBu) && bu !== "WFS"){
-            return [...newBuConfig.lonsOfBusiness];
-        }
-        const prevLobsSorted = [...prevLobs].sort();
-        if (JSON.stringify(sortedNew) !== JSON.stringify(prevLobsSorted)) {
-             return newSelectedLobs;
-        }
-        return prevLobs;
-    });
-
-    setFilterOptions(prev => {
-        const updatedFO = { ...prev, linesOfBusiness: [...newBuConfig.lonsOfBusiness] };
-        const prevLobsSorted = [...(prev.linesOfBusiness || [])].sort();
-        const updatedLobsSorted = [...updatedFO.linesOfBusiness].sort();
-        if (JSON.stringify(prevLobsSorted) !== JSON.stringify(updatedLobsSorted)) {
-            return updatedFO;
-        }
-        return prev;
-    });
-  }, [defaultWFSLoBs]); 
+    // Default LOB selection logic is handled in the useEffect below
+  }, []); 
 
   const handleLOBChange = useCallback((lobs: string[]) => {
       setSelectedLineOfBusiness(lobs);
@@ -1625,53 +1835,63 @@ export default function CapacityInsightsPage() {
   
   const handleTimeIntervalChange = useCallback((interval: TimeInterval) => {
     setSelectedTimeInterval(interval);
-    setSelectedDateRange(getDefaultDateRange(interval)); 
+    const newHeaders = interval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
+    setSelectedDateRange(getDefaultDateRange(interval, newHeaders)); 
   }, []);
 
   useEffect(() => {
-    const currentBuConfig = BUSINESS_UNIT_CONFIG[selectedBusinessUnit];
-    const allLobsForCurrentBu = [...currentBuConfig.lonsOfBusiness];
-    
+    const newBuConfig = BUSINESS_UNIT_CONFIG[selectedBusinessUnit];
+    const allLobsForNewBu = [...newBuConfig.lonsOfBusiness];
     let newDefaultSelectedLobs: string[];
-    if (selectedBusinessUnit === "WFS") {
-        newDefaultSelectedLobs = defaultWFSLoBs.filter(lob => allLobsForCurrentBu.includes(lob as LineOfBusinessName<"WFS">));
-    } else {
-        newDefaultSelectedLobs = [...allLobsForCurrentBu];
-    }
 
+    if (selectedBusinessUnit === "WFS") {
+        newDefaultSelectedLobs = defaultWFSLoBs.filter(lob => 
+            allLobsForNewBu.includes(lob as LineOfBusinessName<"WFS">)
+        );
+    } else {
+        newDefaultSelectedLobs = [...allLobsForNewBu];
+    }
+    
     setSelectedLineOfBusiness(currentSelectedLobs => {
-      const currentSelectedLobsSorted = [...currentSelectedLobs].sort();
-      const newDefaultSelectedLobsSorted = [...newDefaultSelectedLobs].sort();
-      if (JSON.stringify(currentSelectedLobsSorted) !== JSON.stringify(newDefaultSelectedLobsSorted)) {
+      // Only update if the BU change *actually* changes the default LOB set.
+      // This preserves user's specific LOB selections if they switch BU then switch back,
+      // unless the new BU has a different default set.
+      const currentSorted = [...currentSelectedLobs].sort().join(',');
+      const newDefaultSorted = [...newDefaultSelectedLobs].sort().join(',');
+      
+      const isDifferentBuWithDifferentDefaults = 
+        !currentSelectedLobs.every(lob => allLobsForNewBu.includes(lob)) || // some current lobs not in new BU
+        currentSelectedLobs.length !== newDefaultSelectedLobs.length || // different number of default lobs
+        currentSorted !== newDefaultSorted; // content of default lobs is different
+
+
+      if (isDifferentBuWithDifferentDefaults) {
         return newDefaultSelectedLobs;
       }
       return currentSelectedLobs;
     });
-  
+
     setFilterOptions(prev => {
-      const updatedFilterOptions = {
-        businessUnits: [...ALL_BUSINESS_UNITS],
-        linesOfBusiness: [...allLobsForCurrentBu],
-      };
-      const prevLobsSorted = [...(prev.linesOfBusiness || [])].sort();
-      const updatedLobsSorted = [...updatedFilterOptions.linesOfBusiness].sort();
-      if (JSON.stringify(prevLobsSorted) !== JSON.stringify(updatedLobsSorted)) {
-        return updatedFilterOptions;
-      }
-      return prev;
+        const updatedFO = { ...prev, businessUnits: [...ALL_BUSINESS_UNITS], linesOfBusiness: [...newBuConfig.lonsOfBusiness] };
+        const prevLobsSorted = [...(prev.linesOfBusiness || [])].sort();
+        const updatedLobsSorted = [...updatedFO.linesOfBusiness].sort();
+        if (JSON.stringify(prevLobsSorted) !== JSON.stringify(updatedLobsSorted)) {
+            return updatedFO;
+        }
+        return prev;
     });
   }, [selectedBusinessUnit, defaultWFSLoBs]); 
 
 
   const processDataForTable = useCallback(() => {
     const sourcePeriods = selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS;
-    let periodsToDisplay: string[] = [];
+    let periodsToUse: string[] = [];
 
     if (selectedTimeInterval === "Week" && selectedDateRange?.from) {
       const userRangeStart = selectedDateRange.from;
       const userRangeEnd = selectedDateRange.to || userRangeStart; 
 
-      periodsToDisplay = sourcePeriods.filter(periodHeaderStr => {
+      periodsToUse = sourcePeriods.filter(periodHeaderStr => {
         const { startDate: periodStartDate, endDate: periodEndDate } = getHeaderDateRange(periodHeaderStr, selectedTimeInterval);
         if (!periodStartDate || !periodEndDate) return false;
         
@@ -1681,16 +1901,16 @@ export default function CapacityInsightsPage() {
         const userRangeStart = startOfMonth(selectedDateRange.from);
         const userRangeEnd = selectedDateRange.to ? endOfMonth(selectedDateRange.to) : endOfMonth(userRangeStart);
 
-        periodsToDisplay = sourcePeriods.filter(periodHeaderStr => {
+        periodsToUse = sourcePeriods.filter(periodHeaderStr => {
             const { startDate: periodStartDate, endDate: periodEndDate } = getHeaderDateRange(periodHeaderStr, selectedTimeInterval);
             if (!periodStartDate || !periodEndDate) return false;
             return isAfter(periodEndDate, addDays(userRangeStart, -1)) && isBefore(periodStartDate, addDays(userRangeEnd, 1));
         });
-    } else {
-      periodsToDisplay = sourcePeriods.slice(0, NUM_PERIODS_DISPLAYED);
+    } else { // Fallback if no date range selected, though UI should enforce selection
+      periodsToUse = sourcePeriods.slice(0, NUM_PERIODS_DISPLAYED);
     }
     
-    setDisplayedPeriodHeaders(periodsToDisplay);
+    setDisplayedPeriodHeaders(periodsToUse);
 
     const standardWorkMinutes = selectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
     const newDisplayData: CapacityDataRow[] = [];
@@ -1704,20 +1924,20 @@ export default function CapacityInsightsPage() {
 
     const childrenLobsDataRows: CapacityDataRow[] = [];
     
-    const lobsToProcess = selectedLineOfBusiness.length > 0 && selectedLineOfBusiness.length < BUSINESS_UNIT_CONFIG[buName].lonsOfBusiness.length
-      ? relevantRawLobEntriesForSelectedBu.filter(lobEntry => selectedLineOfBusiness.includes(lobEntry.lob))
-      : relevantRawLobEntriesForSelectedBu;
+    const lobsToProcess = selectedLineOfBusiness.length > 0 
+        ? relevantRawLobEntriesForSelectedBu.filter(lobEntry => selectedLineOfBusiness.includes(lobEntry.lob))
+        : relevantRawLobEntriesForSelectedBu;
 
 
     lobsToProcess.forEach(lobRawEntry => {
         const childrenTeamsDataRows: CapacityDataRow[] = [];
-        const teamsToProcess = lobRawEntry.teams || [];
+        const teamsToProcess = lobRawEntry.teams || []; // No team filter from header anymore
 
         const lobCalculatedBaseRequiredMinutes: Record<string, number | null> = {};
-        periodsToDisplay.forEach(period => {
+        periodsToUse.forEach(period => {
             const volume = lobRawEntry.lobVolumeForecast?.[period];
             const avgAHT = lobRawEntry.lobAverageAHT?.[period];
-            if (volume !== null && volume !== undefined && avgAHT !== null && avgAHT !== undefined && avgAHT > 0) {
+            if (typeof volume === 'number' && volume > 0 && typeof avgAHT === 'number' && avgAHT > 0) {
                 lobCalculatedBaseRequiredMinutes[period] = volume * avgAHT;
             } else {
                 lobCalculatedBaseRequiredMinutes[period] = lobRawEntry.lobTotalBaseRequiredMinutes?.[period] ?? 0; 
@@ -1726,7 +1946,7 @@ export default function CapacityInsightsPage() {
         
         teamsToProcess.forEach(teamRawEntry => {
             const periodicTeamMetrics: Record<string, TeamPeriodicMetrics> = {};
-            periodsToDisplay.forEach(period => {
+            periodsToUse.forEach(period => {
               periodicTeamMetrics[period] = calculateTeamMetricsForPeriod(
                 teamRawEntry.periodicInputData[period] || {},
                 lobCalculatedBaseRequiredMinutes[period], 
@@ -1744,7 +1964,7 @@ export default function CapacityInsightsPage() {
         });
         
         const lobPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
-        periodsToDisplay.forEach(period => {
+        periodsToUse.forEach(period => {
             let reqHcSum = 0;
             let actHcSum = 0; 
 
@@ -1758,9 +1978,11 @@ export default function CapacityInsightsPage() {
             const overUnderHCSum = (actHcSum !== null && reqHcSum !== null) ? actHcSum - reqHcSum : null;
 
             lobPeriodicData[period] = {
+                lobVolumeForecast: lobRawEntry.lobVolumeForecast?.[period] ?? null,
+                lobAverageAHT: lobRawEntry.lobAverageAHT?.[period] ?? null,
+                lobTotalBaseRequiredMinutes: lobCalculatedBaseRequiredMinutes[period] ?? null, 
                 requiredHC: reqHcSum,
                 actualHC: actHcSum,
-                lobTotalBaseRequiredMinutes: lobCalculatedBaseRequiredMinutes[period] ?? null, 
                 overUnderHC: overUnderHCSum,
             };
         });
@@ -1776,9 +1998,10 @@ export default function CapacityInsightsPage() {
 
     if (childrenLobsDataRows.length > 0 ) { 
       const buPeriodicData: Record<string, AggregatedPeriodicMetrics> = {};
-      periodsToDisplay.forEach(period => {
+      periodsToUse.forEach(period => {
         let reqHcSum = 0;
         let actHcSum = 0;
+        // Note: LOB Total Base Required Minutes are not summed at BU level, each LOB has its own.
         childrenLobsDataRows.forEach(lobRow => { 
             const lobPeriodMetric = lobRow.periodicData[period] as AggregatedPeriodicMetrics;
               if (lobPeriodMetric) {
@@ -1789,6 +2012,7 @@ export default function CapacityInsightsPage() {
         const overUnderHCSum = (actHcSum !== null && reqHcSum !== null) ? actHcSum - reqHcSum : null;
 
         buPeriodicData[period] = {
+            // lobTotalBaseRequiredMinutes: null, // Not applicable at BU level as sum
             requiredHC: reqHcSum,
             actualHC: actHcSum,
             overUnderHC: overUnderHCSum,
@@ -1821,9 +2045,36 @@ export default function CapacityInsightsPage() {
     setExpandedItems(prev => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
+  useEffect(() => {
+    const headerScroller = headerPeriodScrollerRef.current;
+    const bodyScroller = tableBodyScrollRef.current;
+
+    const syncScroll = (source: HTMLElement, target: HTMLElement) => {
+      if (isSyncingScroll.current) return;
+      isSyncingScroll.current = true;
+      target.scrollLeft = source.scrollLeft;
+      // Reset after a short delay to allow the other scroller to react
+      setTimeout(() => { isSyncingScroll.current = false; }, 50);
+    };
+
+    const handleHeaderScroll = () => {
+      if (headerScroller && bodyScroller) syncScroll(headerScroller, bodyScroller);
+    };
+    const handleBodyScroll = () => {
+      if (bodyScroller && headerScroller) syncScroll(bodyScroller, headerScroller);
+    };
+
+    headerScroller?.addEventListener('scroll', handleHeaderScroll);
+    bodyScroller?.addEventListener('scroll', handleBodyScroll);
+
+    return () => {
+      headerScroller?.removeEventListener('scroll', handleHeaderScroll);
+      bodyScroller?.removeEventListener('scroll', handleBodyScroll);
+    };
+  }, []); // Empty dependency array: refs should be stable after initial render
 
   return (
-    <div className="flex flex-col min-h-screen bg-background text-foreground">
+    <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">
       <HeaderSection
         filterOptions={filterOptions}
         selectedBusinessUnit={selectedBusinessUnit}
@@ -1835,8 +2086,11 @@ export default function CapacityInsightsPage() {
         selectedDateRange={selectedDateRange}
         onSelectDateRange={setSelectedDateRange}
         allAvailablePeriods={selectedTimeInterval === "Week" ? ALL_WEEKS_HEADERS : ALL_MONTH_HEADERS}
+        displayedPeriodHeaders={displayedPeriodHeaders}
+        activeHierarchyContext={activeHierarchyContext}
+        headerPeriodScrollerRef={headerPeriodScrollerRef}
       />
-      <main className="flex-grow p-4"> 
+      <main className="flex-grow overflow-auto p-4 pt-0"> 
         <CapacityTable
           data={displayableCapacityData}
           periodHeaders={displayedPeriodHeaders}
@@ -1849,9 +2103,10 @@ export default function CapacityInsightsPage() {
           editingCell={editingCell}
           onSetEditingCell={handleSetEditingCell}
           selectedTimeInterval={selectedTimeInterval}
+          onActiveHierarchyChange={handleActiveHierarchyChange}
+          tableBodyScrollRef={tableBodyScrollRef}
         />
       </main>
     </div>
   );
 }
-
