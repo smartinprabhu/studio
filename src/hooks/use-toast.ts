@@ -23,6 +23,7 @@ const actionTypes = {
   UPDATE_TOAST: "UPDATE_TOAST",
   DISMISS_TOAST: "DISMISS_TOAST",
   REMOVE_TOAST: "REMOVE_TOAST",
+  SET_TOAST_DURATION: "SET_TOAST_DURATION",
 } as const
 
 let count = 0
@@ -50,6 +51,11 @@ type Action =
   | {
       type: ActionType["REMOVE_TOAST"]
       toastId?: ToasterToast["id"]
+    }
+  | {
+      type: ActionType["SET_TOAST_DURATION"]
+      toastId: ToasterToast["id"]
+      duration: number
     }
 
 interface State {
