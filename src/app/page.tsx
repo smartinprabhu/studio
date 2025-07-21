@@ -1570,10 +1570,9 @@ const MetricCellContent: React.FC<MetricCellContentProps> = React.memo(({
   } else if ((item.itemType === 'BU' || item.itemType === 'LOB') && AGGREGATED_METRIC_ROW_DEFINITIONS.some(def => def.key === metricDef.key)) {
     // Hide LOB-specific metrics for BU level (either by key or isLobOnly flag)
     if (item.itemType === 'BU' && (
-      metricDef.key === 'lobTotalBaseRequiredMinutes' || 
-      metricDef.key === 'lobVolumeForecast' || 
+      metricDef.key === 'lobTotalBaseRequiredMinutes' ||
+      metricDef.key === 'lobVolumeForecast' ||
       metricDef.key === 'lobAverageAHT' ||
-      metricDef.key === 'handlingCapacity' ||
       (metricDef as any).isLobOnly
     )) {
       shouldDisplayMetric = false;
