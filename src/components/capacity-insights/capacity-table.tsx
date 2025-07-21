@@ -227,6 +227,8 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
     displayValue = `${numValue.toFixed(1)}%`;
   } else if (metricDef.isTime && (metricDef.key === 'aht' || metricDef.key === 'lobAverageAHT')) {
     displayValue = `${numValue.toFixed(1)} min`;
+  } else if (metricDef.key === 'cph' || metricDef.key === 'lobAverageCPH') {
+    displayValue = `${numValue.toFixed(1)} CPH`;
   } else if (metricDef.key === 'cph' || metricDef.key === 'averageCPH') {
     displayValue = `${numValue.toFixed(1)} CPH`;
   } else if (metricDef.isTime && (metricDef.key === '_calculatedRequiredAgentMinutes' || metricDef.key === '_calculatedActualProductiveAgentMinutes' || metricDef.key === 'lobTotalBaseRequiredMinutes')) {
@@ -234,7 +236,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
   } else if (metricDef.key === 'billableHoursRequire') {
     displayValue = `${numValue.toFixed(0)} hrs`;
   } else if (metricDef.isHC || ['moveIn', 'moveOut', 'newHireBatch', 'newHireProduction', 'attritionLossHC', 'endingHC', 'hcAfterAttrition'].includes(metricDef.key as string)) {
-    if (selectedModel === 'fix-fte' && metricDef.key === 'requiredFTE') {
+    if (selectedModel === 'fix-fte' && (metricDef.key === 'requiredFTE' || metricDef.key === 'requiredHC')) {
       displayValue = isNaN(numValue) ? '-' : numValue.toFixed(2);
     } else {
       displayValue = isNaN(numValue) ? '-' : Math.round(numValue).toString();

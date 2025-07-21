@@ -114,6 +114,7 @@ export interface BaseHCValues {
 export interface TeamPeriodicMetrics extends BaseHCValues {
   // Inputs / Assumptions (Editable for Teams)
   aht: number | null;
+  cph?: number | null; // CPH Model
   shrinkagePercentage: number | null;
   occupancyPercentage: number | null;
   backlogPercentage: number | null;
@@ -135,13 +136,22 @@ export interface TeamPeriodicMetrics extends BaseHCValues {
   // Calculated Agent Minutes / Workload (Display Only for Teams)
   _calculatedRequiredAgentMinutes: number | null;
   _calculatedActualProductiveAgentMinutes: number | null;
+  
+  // Model-specific fields
+  requiredFTE?: number | null; // Fix FTE Model
 }
 
 export interface AggregatedPeriodicMetrics extends BaseHCValues {
   // LOB-specific Inputs / Calculated (Editable for LOBs)
   lobVolumeForecast?: number | null;
   lobAverageAHT?: number | null;
+  lobAverageCPH?: number | null; // CPH Model
   lobTotalBaseRequiredMinutes?: number | null;
+  
+  // Model-specific fields
+  requiredFTE?: number | null; // Fix FTE Model
+  billableHoursRequire?: number | null; // Billable Hours Model
+  handlingCapacity?: number | null; // Billable Hours Model
 }
 
 export interface RawTeamDataEntry {

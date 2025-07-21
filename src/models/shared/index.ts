@@ -5,6 +5,7 @@ export * from './calculations';
 export * from './model-factory';
 
 // Re-export model-specific definitions
+export { VOLUME_BACKLOG_MODEL_DEFINITIONS } from '../volume-backlog-model/definitions';
 export { CPH_MODEL_DEFINITIONS } from '../cph-model/definitions';
 export { FIX_FTE_MODEL_DEFINITIONS } from '../fix-fte-model/definitions';
 export { FIX_HC_MODEL_DEFINITIONS } from '../fix-hc-model/definitions';

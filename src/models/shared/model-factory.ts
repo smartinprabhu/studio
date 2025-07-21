@@ -1,4 +1,5 @@
 import type { ModelType, ModelMetricDefinitions } from './interfaces';
+import { VOLUME_BACKLOG_MODEL_DEFINITIONS } from '../volume-backlog-model/definitions';
 import { CPH_MODEL_DEFINITIONS } from '../cph-model/definitions';
 import { FIX_FTE_MODEL_DEFINITIONS } from '../fix-fte-model/definitions';
 import { FIX_HC_MODEL_DEFINITIONS } from '../fix-hc-model/definitions';
@@ -21,8 +22,8 @@ export const getModelDefinitions = (modelType: ModelType): ModelMetricDefinition
     case 'volume-backlog':
     default:
       return {
-        teamMetrics: TEAM_METRIC_ROW_DEFINITIONS,
-        aggregatedMetrics: AGGREGATED_METRIC_ROW_DEFINITIONS
+        teamMetrics: VOLUME_BACKLOG_MODEL_DEFINITIONS.teamMetrics,
+        aggregatedMetrics: VOLUME_BACKLOG_MODEL_DEFINITIONS.aggregatedMetrics
       };
   }
 };
