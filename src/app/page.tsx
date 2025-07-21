@@ -93,6 +93,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { suggestLoBGroupings, SuggestLoBGroupingsOutput } from "@/ai/flows/suggest-lob-groupings";
 import ThemeSelector from "./ThemeSelector";
+import ModelSelector, { AVAILABLE_MODELS, ModelType } from "@/components/capacity-insights/model-selector";
 import {
   format,
   parse,
@@ -108,6 +109,19 @@ import {
 import type { DayPickerProps } from "react-day-picker";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { MonthRangePicker } from "./MonthRangePicker"; // Import the new picker
+import {
+  calculateCphModel,
+  calculateFixFteModel,
+  calculateFixHcModel,
+  calculateBillableHoursModel,
+} from "@/utils/calculations";
+import {
+  CPH_TEAM_METRIC_ROW_DEFINITIONS,
+  CPH_AGGREGATED_METRIC_ROW_DEFINITIONS,
+  FIX_FTE_TEAM_METRICS,
+  FIX_HC_TEAM_METRICS,
+  BILLABLE_HOURS_AGGREGATED_METRICS,
+} from "@/components/capacity-insights/types";
 
 const throttle = (func: (...args: any[]) => void, wait: number) => {
   let timeout: NodeJS.Timeout | null = null;
@@ -328,6 +342,8 @@ export interface HeaderSectionProps {
   onExportCsv: () => void;
   viewMode: 'plan' | 'chart';
   onSetViewMode: (mode: 'plan' | 'chart') => void;
+  selectedModelId: string;
+  onModelChange: (modelId: string) => void;
 }
 
 export interface RawTeamDataEntry {
@@ -1018,6 +1034,8 @@ function HeaderSection({
   onExportCsv,
   viewMode,
   onSetViewMode,
+  selectedModelId,
+  onModelChange,
 }: HeaderSectionProps) {
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [isAddOpen, setAddOpen] = useState(false);
@@ -1298,6 +1316,7 @@ function HeaderSection({
                           </Sheet>
 
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-center gap-x-4 gap-y-2">
+          <ModelSelector selectedModelId={selectedModelId} onModelChange={onModelChange} />
           <Select value={currentSelectedBusinessUnit} onValueChange={handleSelectBusinessUnit}>
             <SelectTrigger className="w-full lg:w-[180px] text-sm h-9">
               <Building2 className="mr-2 opacity-70" />
@@ -2032,7 +2051,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
   }, [periodHeaders, data, onActiveHierarchyChange, tableBodyScrollRef]);
 
   const renderTeamMetrics = useCallback((item: CapacityDataRow, category: MetricDefinition['category'], baseLevel: number) => {
-    return TEAM_METRIC_ROW_DEFINITIONS
+    return teamMetricDefinitions
       .filter(def => def.category === category)
       .map(metricDef => (
         <MetricRow
@@ -2098,7 +2117,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
         rows.push(...renderTeamMetrics(item, 'HCAdjustment', item.level + 2));
       }
     } else {
-      AGGREGATED_METRIC_ROW_DEFINITIONS.forEach(metricDef => {
+      aggregatedMetricDefinitions.forEach(metricDef => {
         // Skip LOB-specific metrics for BU level as per user request (already handled in MetricCellContent)
         if (item.itemType === 'BU' && (metricDef.key === 'lobTotalBaseRequiredMinutes' || metricDef.key === 'lobVolumeForecast' || metricDef.key === 'lobAverageAHT')) {
           return;
@@ -2327,6 +2346,7 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
 
   const [editingCell, setEditingCell] = useState<{ id: string; period: string; metricKey: string } | null>(null);
   const [viewMode, setViewMode] = useState<'plan' | 'chart'>('plan'); // 'plan' or 'chart'
+  const [selectedModelId, setSelectedModelId] = useState<string>(AVAILABLE_MODELS[0].id);
 
   const [activeHierarchyContext, setActiveHierarchyContext] = useState<string>("BU / LoB / Team / Metric");
 
@@ -2657,6 +2677,25 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
     setDisplayedPeriodHeaders(periodsToDisplayCurrently);
 
     const standardWorkMinutes = currentSelectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
+    let teamMetricDefs = TEAM_METRIC_ROW_DEFINITIONS;
+    let aggregatedMetricDefs = AGGREGATED_METRIC_ROW_DEFINITIONS;
+
+    switch (selectedModelId) {
+      case 'cph':
+        teamMetricDefs = CPH_TEAM_METRIC_ROW_DEFINITIONS;
+        aggregatedMetricDefs = CPH_AGGREGATED_METRIC_ROW_DEFINITIONS;
+        break;
+      case 'fix-fte':
+        teamMetricDefs = FIX_FTE_TEAM_METRICS;
+        break;
+      case 'fix-hc':
+        teamMetricDefs = FIX_HC_TEAM_METRICS;
+        break;
+      case 'billable-hours':
+        aggregatedMetricDefs = BILLABLE_HOURS_AGGREGATED_METRICS;
+        break;
+    }
+
     const newDisplayData: CapacityDataRow[] = [];
 
     const buName = currentSelectedBusinessUnit;
@@ -2896,11 +2935,25 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
             }
           }
 
-          periodicTeamMetrics[monthPeriodOrWeekPeriod] = calculateTeamMetricsForPeriod(
-            teamInputForPeriod,
-            lobTotalBaseRequiredMinutesForCalcContext,
-            standardWorkMinutes
-          );
+          let calculatedMetrics;
+          switch (selectedModelId) {
+            case 'cph':
+              calculatedMetrics = calculateCphModel(teamInputForPeriod, lobTotalBaseRequiredMinutesForCalcContext, standardWorkMinutes);
+              break;
+            case 'fix-fte':
+              calculatedMetrics = calculateFixFteModel(teamInputForPeriod, lobTotalBaseRequiredMinutesForCalcContext);
+              break;
+            case 'fix-hc':
+              calculatedMetrics = calculateFixHcModel(teamInputForPeriod, lobTotalBaseRequiredMinutesForCalcContext);
+              break;
+            default:
+              calculatedMetrics = calculateTeamMetricsForPeriod(
+                teamInputForPeriod,
+                lobTotalBaseRequiredMinutesForCalcContext,
+                standardWorkMinutes
+              );
+          }
+          periodicTeamMetrics[monthPeriodOrWeekPeriod] = calculatedMetrics;
         });
 
         childrenTeamsDataRows.push({
@@ -3137,6 +3190,8 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
         onExportCsv={handleExportCsv}
         viewMode={viewMode}
         onSetViewMode={setViewMode}
+        selectedModelId={selectedModelId}
+        onModelChange={setSelectedModelId}
       />
       <div className="flex-grow overflow-hidden flex flex-col">
         <main className="px-4 pb-4 flex-grow overflow-y-auto">
@@ -3146,8 +3201,8 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
               periodHeaders={displayedPeriodHeaders}
               expandedItems={expandedItems}
               toggleExpand={toggleExpand}
-              teamMetricDefinitions={TEAM_METRIC_ROW_DEFINITIONS}
-              aggregatedMetricDefinitions={AGGREGATED_METRIC_ROW_DEFINITIONS}
+              teamMetricDefinitions={teamMetricDefs}
+              aggregatedMetricDefinitions={aggregatedMetricDefs}
               onTeamMetricChange={handleTeamMetricChange}
               onLobMetricChange={handleLobMetricChange}
               editingCell={editingCell}

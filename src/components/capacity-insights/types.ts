@@ -105,13 +105,26 @@ export const ALL_TEAM_NAMES: TeamName[] = ["Inhouse", "BPO1", "BPO2"];
 export type TimeInterval = "Week" | "Month";
 export type TeamName = "Inhouse" | "BPO1" | "BPO2";
 
+export type ModelId = 'volume-backlog' | 'cph' | 'fix-fte' | 'fix-hc' | 'billable-hours';
+
+export interface ModelSpecificMetrics {
+  // CPH Model
+  cph?: number | null;
+
+  // Fix Models
+  requiredFTE?: number | null;
+
+  // Billable Hours Model
+  billableHoursRequire?: number | null;
+}
+
 export interface BaseHCValues {
   requiredHC: number | null;
   actualHC: number | null;
   overUnderHC: number | null;
 }
 
-export interface TeamPeriodicMetrics extends BaseHCValues {
+export interface TeamPeriodicMetrics extends BaseHCValues, ModelSpecificMetrics {
   // Inputs / Assumptions (Editable for Teams)
   aht: number | null;
   shrinkagePercentage: number | null;
@@ -228,6 +241,39 @@ export const AGGREGATED_METRIC_ROW_DEFINITIONS: AggregatedMetricDefinitions = [
   { key: "actualHC", label: "Actual/Starting HC", isHC: true, description: "Aggregated actual/starting headcount from child entities." },
   { key: "overUnderHC", label: "Over/Under HC", isHC: true, description: "Difference between aggregated Actual/Starting HC and Required HC." },
 ];
+
+export const CPH_TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = TEAM_METRIC_ROW_DEFINITIONS.map(def => {
+  if (def.key === 'aht') {
+    return { ...def, key: 'cph', label: 'CPH', isTime: false, description: "Contacts Per Hour: The number of contacts an agent can handle in an hour." };
+  }
+  return def;
+});
+
+export const FIX_FTE_TEAM_METRICS: TeamMetricDefinitions = [
+  { key: 'requiredFTE', label: 'Required FTE', isDisplayOnly: true, category: 'PrimaryHC' },
+  { key: 'volumeMixPercentage', label: 'Volume Mix %', isPercentage: true, isEditableForTeam: true },
+  { key: 'attritionPercentage', label: 'Attrition %', isPercentage: true, isEditableForTeam: true },
+];
+
+export const FIX_HC_TEAM_METRICS: TeamMetricDefinitions = FIX_FTE_TEAM_METRICS.map(metric =>
+  metric.key === 'requiredFTE'
+    ? { ...metric, key: 'requiredHC', label: 'Required HC', isHC: true }
+    : metric
+);
+
+export const BILLABLE_HOURS_AGGREGATED_METRICS: AggregatedMetricDefinitions = [
+  { key: 'billableHoursRequire', label: 'Billable Hours/Require Hours', isEditableForLob: true, isTime: true },
+  { key: 'averageAHT', label: 'Average AHT', isTime: true, isEditableForLob: true },
+  { key: 'handlingCapacity', label: 'Handling Capacity', isCount: true },
+  { key: 'requiredHC', label: 'Required HC', isHC: true, isDisplayOnly: true }
+];
+
+export const CPH_AGGREGATED_METRIC_ROW_DEFINITIONS: AggregatedMetricDefinitions = AGGREGATED_METRIC_ROW_DEFINITIONS.map(def => {
+  if (def.key === 'lobAverageAHT') {
+    return { ...def, key: 'averageCPH', label: 'Average CPH', isTime: false, description: "Average Contacts Per Hour for the LOB." };
+  }
+  return def;
+});
 
 export interface FilterOptions {
   businessUnits: BusinessUnitName[];
