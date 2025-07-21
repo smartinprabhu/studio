@@ -953,6 +953,7 @@ function DateRangePicker({ date, onDateChange, className }: DateRangePickerProps
                     />
                   ),
                 }}
+                
                 fromYear={minYear}
                 toYear={maxYear}
                 selected={date}
