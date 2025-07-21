@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { memo, useRef, useEffect, useState } from "react";
@@ -25,6 +24,7 @@ import type {
     TimeInterval,
 } from "./types";
 import { STANDARD_MONTHLY_WORK_MINUTES, STANDARD_WEEKLY_WORK_MINUTES } from "./types";
+import type { ModelType } from "@/models/shared/interfaces";
 
 
 interface MetricCellContentProps {
@@ -37,6 +37,7 @@ interface MetricCellContentProps {
   isEditing: boolean;
   onSetEditingCell: (id: string | null, period: string | null, metricKey: string | null) => void;
   selectedTimeInterval: TimeInterval;
+  selectedModel: ModelType;
 }
 
 const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
@@ -49,6 +50,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
   isEditing,
   onSetEditingCell,
   selectedTimeInterval,
+  selectedModel,
 }) => {
   const [tempValue, setTempValue] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -216,10 +218,18 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
     displayValue = `${numValue.toFixed(1)}%`;
   } else if (metricDef.isTime && (metricDef.key === 'aht' || metricDef.key === 'lobAverageAHT')) {
     displayValue = `${numValue.toFixed(1)} min`;
+  } else if (metricDef.key === 'cph' || metricDef.key === 'averageCPH') {
+    displayValue = `${numValue.toFixed(1)} CPH`;
   } else if (metricDef.isTime && (metricDef.key === '_calculatedRequiredAgentMinutes' || metricDef.key === '_calculatedActualProductiveAgentMinutes' || metricDef.key === 'lobTotalBaseRequiredMinutes')) {
     displayValue = `${numValue.toFixed(0)} min`;
+  } else if (metricDef.key === 'billableHoursRequire') {
+    displayValue = `${numValue.toFixed(0)} hrs`;
   } else if (metricDef.isHC || ['moveIn', 'moveOut', 'newHireBatch', 'newHireProduction', 'attritionLossHC', 'endingHC', 'hcAfterAttrition'].includes(metricDef.key as string)) {
-    displayValue = isNaN(numValue) ? '-' : Math.round(numValue).toString();
+    if (selectedModel === 'fix-fte' && metricDef.key === 'requiredFTE') {
+      displayValue = isNaN(numValue) ? '-' : numValue.toFixed(2);
+    } else {
+      displayValue = isNaN(numValue) ? '-' : Math.round(numValue).toString();
+    }
   } else if (metricDef.isCount) {
      displayValue = isNaN(numValue) ? '-' : numValue.toFixed(0);
   } else if (typeof numValue === 'number' && !isNaN(numValue)) {
@@ -406,9 +416,10 @@ interface MetricRowProps {
   editingCell: { id: string; period: string; metricKey: string } | null;
   onSetEditingCell: (id: string | null, period: string | null, metricKey: string | null) => void;
   selectedTimeInterval: TimeInterval;
+  selectedModel: ModelType;
 }
 
-const MetricRow: React.FC<MetricRowProps> = memo(({ item, metricDef, level, periodHeaders, onTeamMetricChange, onLobMetricChange, editingCell, onSetEditingCell, selectedTimeInterval }) => {
+const MetricRow: React.FC<MetricRowProps> = memo(({ item, metricDef, level, periodHeaders, onTeamMetricChange, onLobMetricChange, editingCell, onSetEditingCell, selectedTimeInterval, selectedModel }) => {
   return (
     <TableRow className="hover:bg-muted/50">
       <TableCell
@@ -452,6 +463,7 @@ const MetricRow: React.FC<MetricRowProps> = memo(({ item, metricDef, level, peri
                 isEditing={isCurrentlyEditing}
                 onSetEditingCell={onSetEditingCell}
                 selectedTimeInterval={selectedTimeInterval}
+                selectedModel={selectedModel}
             />
           </TableCell>
         );
@@ -476,6 +488,7 @@ interface CapacityTableProps {
   selectedTimeInterval: TimeInterval;
   onActiveHierarchyChange: (hierarchy: string | null) => void;
   tableBodyScrollRef: React.RefObject<HTMLDivElement>;
+  selectedModel: ModelType;
 }
 
 
@@ -493,6 +506,7 @@ export const CapacityTable: React.FC<CapacityTableProps> = memo(({
   selectedTimeInterval,
   onActiveHierarchyChange,
   tableBodyScrollRef,
+  selectedModel,
 }) => {
 
   const itemNameRowRefs = useRef<Map<string, HTMLTableRowElement | null>>(new Map());
@@ -595,6 +609,7 @@ export const CapacityTable: React.FC<CapacityTableProps> = memo(({
             editingCell={editingCell}
             onSetEditingCell={onSetEditingCell}
             selectedTimeInterval={selectedTimeInterval}
+            selectedModel={selectedModel}
           />
         );
       });
@@ -621,6 +636,7 @@ export const CapacityTable: React.FC<CapacityTableProps> = memo(({
             editingCell={editingCell}
             onSetEditingCell={onSetEditingCell}
             selectedTimeInterval={selectedTimeInterval}
+            selectedModel={selectedModel}
           />
         );
       });
@@ -654,6 +670,7 @@ export const CapacityTable: React.FC<CapacityTableProps> = memo(({
               editingCell={editingCell}
               onSetEditingCell={onSetEditingCell}
               selectedTimeInterval={selectedTimeInterval}
+              selectedModel={selectedModel}
             />
           );
         }
@@ -766,5 +783,3 @@ export const CapacityTable: React.FC<CapacityTableProps> = memo(({
   );
 });
 CapacityTable.displayName = 'CapacityTable';
-
-    
