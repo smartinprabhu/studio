@@ -2292,6 +2292,38 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
     return JSON.parse(JSON.stringify(initialMockRawCapacityData));
   });
 
+  const [selectedModelId, setSelectedModelId] = useState<string>(AVAILABLE_MODELS[0].id);
+
+  const { teamMetricDefs, aggregatedMetricDefs } = useMemo(() => {
+    switch (selectedModelId) {
+      case 'cph':
+        return {
+          teamMetricDefs: CPH_TEAM_METRIC_ROW_DEFINITIONS,
+          aggregatedMetricDefs: CPH_AGGREGATED_METRIC_ROW_DEFINITIONS,
+        };
+      case 'fix-fte':
+        return {
+          teamMetricDefs: FIX_FTE_TEAM_METRICS,
+          aggregatedMetricDefs: AGGREGATED_METRIC_ROW_DEFINITIONS,
+        };
+      case 'fix-hc':
+        return {
+          teamMetricDefs: FIX_HC_TEAM_METRICS,
+          aggregatedMetricDefs: AGGREGATED_METRIC_ROW_DEFINITIONS,
+        };
+      case 'billable-hours':
+        return {
+          teamMetricDefs: TEAM_METRIC_ROW_DEFINITIONS,
+          aggregatedMetricDefs: BILLABLE_HOURS_AGGREGATED_METRICS,
+        };
+      default:
+        return {
+          teamMetricDefs: TEAM_METRIC_ROW_DEFINITIONS,
+          aggregatedMetricDefs: AGGREGATED_METRIC_ROW_DEFINITIONS,
+        };
+    }
+  }, [selectedModelId]);
+
   useEffect(() => {
     rawCapacityDataSource = localRawCapacityDataSource;
   }, [localRawCapacityDataSource]);
@@ -2349,6 +2381,25 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
   const [selectedModelId, setSelectedModelId] = useState<string>(AVAILABLE_MODELS[0].id);
 
   const [activeHierarchyContext, setActiveHierarchyContext] = useState<string>("BU / LoB / Team / Metric");
+
+  let teamMetricDefs = TEAM_METRIC_ROW_DEFINITIONS;
+  let aggregatedMetricDefs = AGGREGATED_METRIC_ROW_DEFINITIONS;
+
+  switch (selectedModelId) {
+    case 'cph':
+      teamMetricDefs = CPH_TEAM_METRIC_ROW_DEFINITIONS;
+      aggregatedMetricDefs = CPH_AGGREGATED_METRIC_ROW_DEFINITIONS;
+      break;
+    case 'fix-fte':
+      teamMetricDefs = FIX_FTE_TEAM_METRICS;
+      break;
+    case 'fix-hc':
+      teamMetricDefs = FIX_HC_TEAM_METRICS;
+      break;
+    case 'billable-hours':
+      aggregatedMetricDefs = BILLABLE_HOURS_AGGREGATED_METRICS;
+      break;
+  }
 
   const headerPeriodScrollerRef = useRef<HTMLDivElement>(null);
   const tableBodyScrollRef = useRef<HTMLDivElement>(null);
@@ -2677,25 +2728,6 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
     setDisplayedPeriodHeaders(periodsToDisplayCurrently);
 
     const standardWorkMinutes = currentSelectedTimeInterval === "Week" ? STANDARD_WEEKLY_WORK_MINUTES : STANDARD_MONTHLY_WORK_MINUTES;
-    let teamMetricDefs = TEAM_METRIC_ROW_DEFINITIONS;
-    let aggregatedMetricDefs = AGGREGATED_METRIC_ROW_DEFINITIONS;
-
-    switch (selectedModelId) {
-      case 'cph':
-        teamMetricDefs = CPH_TEAM_METRIC_ROW_DEFINITIONS;
-        aggregatedMetricDefs = CPH_AGGREGATED_METRIC_ROW_DEFINITIONS;
-        break;
-      case 'fix-fte':
-        teamMetricDefs = FIX_FTE_TEAM_METRICS;
-        break;
-      case 'fix-hc':
-        teamMetricDefs = FIX_HC_TEAM_METRICS;
-        break;
-      case 'billable-hours':
-        aggregatedMetricDefs = BILLABLE_HOURS_AGGREGATED_METRICS;
-        break;
-    }
-
     const newDisplayData: CapacityDataRow[] = [];
 
     const buName = currentSelectedBusinessUnit;
