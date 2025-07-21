@@ -25,7 +25,7 @@ import { Building2, Briefcase, ChevronDown, Users, Download, Zap } from "lucide-
 import { cn } from "@/lib/utils";
 import type { HeaderSectionProps, BusinessUnitName, LineOfBusinessName, TimeInterval } from "./types";
 import { DateRangePicker } from "./date-range-picker";
-import { AiGroupingDialog } from "./ai-grouping-dialog"; // Ensure this is correctly imported
+import { AiGroupingDialog } from "./ai-grouping-dialog";
 import { ModelSelector } from "@/components/model-selector/model-selector";
 import type { ModelType } from "@/models/shared/interfaces";
 

@@ -22,6 +22,8 @@ import type {
     AggregatedMetricDefinitions,
     TeamName,
     TimeInterval,
+    TEAM_METRIC_ROW_DEFINITIONS,
+    AGGREGATED_METRIC_ROW_DEFINITIONS,
 } from "./types";
 import { STANDARD_MONTHLY_WORK_MINUTES, STANDARD_WEEKLY_WORK_MINUTES } from "./types";
 import type { ModelType } from "@/models/shared/interfaces";
@@ -119,7 +121,14 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
     if (item.itemType === 'Team' && metricDef.isEditableForTeam && !metricDef.isDisplayOnly && item.lobId) {
       onTeamMetricChange(item.lobId, item.name as TeamName, periodName, metricDef.key as keyof TeamPeriodicMetrics, tempValue);
     } else if (item.itemType === 'LOB' && metricDef.isEditableForLob && !metricDef.isDisplayOnly) {
-      onLobMetricChange(item.id, periodName, metricDef.key as 'lobVolumeForecast' | 'lobAverageAHT' | 'lobTotalBaseRequiredMinutes', tempValue);
+      // Handle model-specific LOB metric changes
+      let lobMetricKey = metricDef.key as string;
+      if (selectedModel === 'cph' && metricDef.key === 'averageCPH') {
+        lobMetricKey = 'lobAverageAHT'; // Map CPH back to AHT for storage
+      } else if (selectedModel === 'billable-hours' && metricDef.key === 'billableHoursRequire') {
+        lobMetricKey = 'lobTotalBaseRequiredMinutes'; // Map billable hours to base minutes
+      }
+      onLobMetricChange(item.id, periodName, lobMetricKey as 'lobVolumeForecast' | 'lobAverageAHT' | 'lobTotalBaseRequiredMinutes', tempValue);
     }
     setTempValue(null); // Clear tempValue after save
     onSetEditingCell(null, null, null);
@@ -177,9 +186,9 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
   }
   
   let shouldDisplayMetric = false;
-  if (item.itemType === 'Team' && TEAM_METRIC_ROW_DEFINITIONS.some(def => def.key === metricDef.key && def.category !== 'Internal')) {
+  if (item.itemType === 'Team') {
     shouldDisplayMetric = true;
-  } else if ((item.itemType === 'BU' || item.itemType === 'LOB') && AGGREGATED_METRIC_ROW_DEFINITIONS.some(def => def.key === metricDef.key)) {
+  } else if ((item.itemType === 'BU' || item.itemType === 'LOB')) {
     // BU should not display LOB-specific editable metrics
     if (item.itemType === 'BU' && (metricDef.key === 'lobTotalBaseRequiredMinutes' || metricDef.key === 'lobVolumeForecast' || metricDef.key === 'lobAverageAHT')) {
        shouldDisplayMetric = false;

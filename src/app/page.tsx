@@ -25,7 +25,7 @@ import {
 import { initialMockRawCapacityData } from "@/components/capacity-insights/data";
 import { CapacityTable } from "@/components/capacity-insights/capacity-table";
 import { HeaderSection } from "@/components/capacity-insights/header-section";
-import { ThemeProvider } from "@/components/ThemeContext";
+import { ThemeProvider } from "../components/ThemeContext";
 import { ModelSelector } from "@/components/model-selector/model-selector";
 import { getModelDefinitions, calculateModelMetrics } from "@/models/shared";
 import type { ModelType, ExtendedTeamPeriodicMetrics, ExtendedAggregatedPeriodicMetrics } from "@/models/shared/interfaces";
@@ -142,12 +142,60 @@ export default function CapacityInsightsPage() {
       };
     } else {
       // Use model-specific calculation functions
-      modelSpecificMetrics = calculateModelMetrics(
-        modelType, 
-        teamInput as ExtendedTeamPeriodicMetrics, 
-        lobTotalBaseRequiredMinutes, 
-        context
-      );
+      // Import the calculation functions directly to avoid circular dependency
+      if (modelType === 'cph') {
+        const cph = teamInput.cph || 1;
+        const teamBaseMinutes = lobTotalBaseRequiredMinutes && teamInput.volumeMixPercentage
+          ? lobTotalBaseRequiredMinutes * (teamInput.volumeMixPercentage / 100)
+          : null;
+        const backlogAdjustment = 1 + ((teamInput.backlogPercentage || 0) / 100);
+        const effectiveRequiredMinutes = teamBaseMinutes ? teamBaseMinutes * backlogAdjustment : null;
+
+        const shrinkageFactor = 1 - ((teamInput.shrinkagePercentage || 0) / 100);
+        const occupancyFactor = (teamInput.occupancyPercentage || 85) / 100;
+        const effectiveProductiveMinutes = standardWorkMinutesForPeriod * shrinkageFactor * occupancyFactor;
+
+        const requiredHC = effectiveProductiveMinutes > 0 && effectiveRequiredMinutes ? effectiveRequiredMinutes / effectiveProductiveMinutes : null;
+
+        modelSpecificMetrics = {
+          _calculatedRequiredAgentMinutes: effectiveRequiredMinutes,
+          requiredHC: requiredHC,
+          overUnderHC: (teamInput.actualHC && requiredHC) ? teamInput.actualHC - requiredHC : null
+        };
+      } else if (modelType === 'fix-fte') {
+        const teamBaseMinutes = lobTotalBaseRequiredMinutes && teamInput.volumeMixPercentage
+          ? lobTotalBaseRequiredMinutes * (teamInput.volumeMixPercentage / 100)
+          : null;
+        const simplifiedFTE = teamBaseMinutes ? teamBaseMinutes / (standardWorkMinutesForPeriod * 1.33) : null;
+
+        modelSpecificMetrics = {
+          _calculatedRequiredAgentMinutes: teamBaseMinutes,
+          requiredFTE: simplifiedFTE,
+          overUnderHC: (teamInput.actualHC && simplifiedFTE) ? teamInput.actualHC - simplifiedFTE : null
+        };
+      } else if (modelType === 'fix-hc') {
+        const teamBaseMinutes = lobTotalBaseRequiredMinutes && teamInput.volumeMixPercentage
+          ? lobTotalBaseRequiredMinutes * (teamInput.volumeMixPercentage / 100)
+          : null;
+        const simplifiedHC = teamBaseMinutes ? teamBaseMinutes / (standardWorkMinutesForPeriod * 1.33) : null;
+
+        modelSpecificMetrics = {
+          _calculatedRequiredAgentMinutes: teamBaseMinutes,
+          requiredHC: simplifiedHC,
+          overUnderHC: (teamInput.actualHC && simplifiedHC) ? teamInput.actualHC - simplifiedHC : null
+        };
+      } else if (modelType === 'billable-hours') {
+        const teamBillableHours = lobTotalBaseRequiredMinutes && teamInput.volumeMixPercentage
+          ? (lobTotalBaseRequiredMinutes / 60) * (teamInput.volumeMixPercentage / 100)
+          : null;
+        const standardHoursPerPeriod = standardWorkMinutesForPeriod / 60;
+        const requiredHC = teamBillableHours ? teamBillableHours / standardHoursPerPeriod : null;
+
+        modelSpecificMetrics = {
+          requiredHC: requiredHC,
+          overUnderHC: (teamInput.actualHC && requiredHC) ? teamInput.actualHC - requiredHC : null
+        };
+      }
     }
 
     return {
@@ -203,13 +251,13 @@ export default function CapacityInsightsPage() {
           calculatedBaseMinutes = lobVolume * lobEntry.lobAverageAHT[periodHeader]!;
           lobMetrics = {
             lobVolumeForecast: lobVolume,
-            averageCPH: averageCPH,
+            lobAverageAHT: lobEntry.lobAverageAHT[periodHeader],
             lobTotalBaseRequiredMinutes: calculatedBaseMinutes
           };
         } else if (selectedModel === 'billable-hours') {
           lobMetrics = {
-            billableHoursRequire: lobBaseMinutes ? lobBaseMinutes / 60 : null, // Convert minutes to hours
-            handlingCapacity: lobVolume
+            lobTotalBaseRequiredMinutes: lobBaseMinutes,
+            lobVolumeForecast: lobVolume
           };
         } else {
           lobMetrics = {
@@ -365,7 +413,7 @@ export default function CapacityInsightsPage() {
   const handleLobMetricChange = useCallback((
     lobId: string, 
     periodHeader: string, 
-    metricKey: 'lobVolumeForecast' | 'lobAverageAHT' | 'lobTotalBaseRequiredMinutes' | 'averageCPH' | 'billableHoursRequire' | 'handlingCapacity', 
+    metricKey: 'lobVolumeForecast' | 'lobAverageAHT' | 'lobTotalBaseRequiredMinutes', 
     newValue: string
   ) => {
     setRawCapacityData(prevData => {
@@ -374,39 +422,16 @@ export default function CapacityInsightsPage() {
 
         const numericValue = newValue.trim() === "" ? null : parseFloat(newValue);
         
-        // Handle model-specific metric mappings
-        if (metricKey === 'averageCPH' && selectedModel === 'cph') {
-          // Convert CPH back to AHT for storage
-          const ahtValue = numericValue ? 60 / numericValue : null;
+        // Standard metric updates
+        const targetField = metricKey as keyof RawLoBCapacityEntry;
+        if (targetField in lobEntry && typeof lobEntry[targetField] === 'object') {
           return {
             ...lobEntry,
-            lobAverageAHT: {
-              ...lobEntry.lobAverageAHT,
-              [periodHeader]: ahtValue
+            [targetField]: {
+              ...lobEntry[targetField],
+              [periodHeader]: numericValue
             }
           };
-        } else if (metricKey === 'billableHoursRequire' && selectedModel === 'billable-hours') {
-          // Convert hours to minutes for storage
-          const minutesValue = numericValue ? numericValue * 60 : null;
-          return {
-            ...lobEntry,
-            lobTotalBaseRequiredMinutes: {
-              ...lobEntry.lobTotalBaseRequiredMinutes,
-              [periodHeader]: minutesValue
-            }
-          };
-        } else {
-          // Standard metric updates
-          const targetField = metricKey as keyof RawLoBCapacityEntry;
-          if (targetField in lobEntry && typeof lobEntry[targetField] === 'object') {
-            return {
-              ...lobEntry,
-              [targetField]: {
-                ...lobEntry[targetField],
-                [periodHeader]: numericValue
-              }
-            };
-          }
         }
 
         return lobEntry;
