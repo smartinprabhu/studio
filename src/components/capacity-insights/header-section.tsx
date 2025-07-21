@@ -26,6 +26,13 @@ import { cn } from "@/lib/utils";
 import type { HeaderSectionProps, BusinessUnitName, LineOfBusinessName, TimeInterval } from "./types";
 import { DateRangePicker } from "./date-range-picker";
 import { AiGroupingDialog } from "./ai-grouping-dialog"; // Ensure this is correctly imported
+import { ModelSelector } from "@/components/model-selector/model-selector";
+import type { ModelType } from "@/models/shared/interfaces";
+
+interface ExtendedHeaderSectionProps extends HeaderSectionProps {
+  selectedModel: ModelType;
+  onModelChange: (model: ModelType) => void;
+}
 
 export function HeaderSection({
   allBusinessUnits,
@@ -43,7 +50,9 @@ export function HeaderSection({
   displayedPeriodHeaders,
   activeHierarchyContext,
   headerPeriodScrollerRef,
-}: HeaderSectionProps) {
+  selectedModel,
+  onModelChange,
+}: ExtendedHeaderSectionProps) {
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
 
   const handleLobSelectionChange = (lob: string, checked: boolean) => {
@@ -85,6 +94,11 @@ export function HeaderSection({
         </div>
 
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end gap-x-4 gap-y-2">
+          <ModelSelector
+            selectedModel={selectedModel}
+            onModelChange={onModelChange}
+          />
+
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Business Unit</Label>
             <Select value={selectedBusinessUnit} onValueChange={onSelectBusinessUnit}>
