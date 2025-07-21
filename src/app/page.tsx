@@ -256,40 +256,27 @@ export interface MetricDefinition {
 export type TeamMetricDefinitions = MetricDefinition[];
 export type AggregatedMetricDefinitions = MetricDefinition[];
 
-export const TEAM_METRIC_ROW_DEFINITIONS: TeamMetricDefinitions = [
-  { key: "requiredHC", label: "Required HC", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Calculated number of headcount required based on demand and productivity assumptions." },
-  { key: "actualHC", label: "Actual/Starting HC", isHC: true, isEditableForTeam: true, step: 0.01, category: 'PrimaryHC', description: "The actual or starting headcount for the period before adjustments." },
-  { key: "overUnderHC", label: "Over/Under HC", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Difference between Actual/Starting HC and Required HC.\nFormula: Actual HC - Required HC" },
-  { key: "aht", label: "AHT", isTime: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Average Handle Time: The average time taken to handle one interaction." },
-  { key: "occupancyPercentage", label: "Occupancy %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Occupancy: Percentage of time agents are busy with interaction-related work during their available time." },
-  { key: "backlogPercentage", label: "Backlog %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Backlog: Percentage of additional work (e.g., deferred tasks) that needs to be handled on top of forecasted volume." },
-  { key: "attritionPercentage", label: "Attrition %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Attrition: Percentage of agents expected to leave during the period." },
-  { key: "volumeMixPercentage", label: "Volume Mix %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Volume Mix: Percentage of the LOB's total volume handled by this team." },
-  { key: "moveIn", label: "Move In (+)", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Headcount moving into this team from other teams or roles." },
-  { key: "moveOut", label: "Move Out (-)", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Headcount moving out of this team to other teams or roles." },
-  { key: "newHireBatch", label: "New Hire Batch", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Number of new hires starting in a batch during this period (typically in training)." },
-  { key: "newHireProduction", label: "New Hire Production", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Number of new hires becoming productive and joining the floor during this period." },
-  { key: "attritionLossHC", label: "Attrition Loss HC", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Calculated headcount lost due to attrition.\nFormula: Actual HC * Attrition %" },
-  { key: "hcAfterAttrition", label: "HC After Attrition", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Headcount remaining after attrition loss.\nFormula: Actual HC - Attrition Loss HC" },
-  { key: "endingHC", label: "Ending HC", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Projected headcount at the end of the period after all adjustments.\nFormula: HC After Attrition + New Hire Prod. + Move In - Move Out" },
-  { key: "_calculatedRequiredAgentMinutes", label: "Eff. Req. Mins (Team)", isDisplayOnly: true, isTime: true, category: 'HCAdjustment', description: "Team's share of LOB demand minutes, adjusted for the team's backlog percentage.\nFormula: (Total Base Req Mins * Team Vol Mix %) * (1 + Team Backlog %)" },
-  { key: "_calculatedActualProductiveAgentMinutes", label: "Actual Prod. Mins (Team)", isDisplayOnly: true, isTime: true, category: 'Internal', description: "Total productive agent minutes available from the team's actual headcount, considering shrinkage and occupancy.\nFormula: Actual HC * Std Mins * (1 - In Office Shrink%) * (1 - Out of Office Shrink%) * Occupancy%" },
-  { key: "inOfficeShrinkagePercentage", label: "In Office Shrinkage %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "In Office Shrinkage: Percentage of paid time that agents are not available for handling interactions while in office." },
-  { key: "outOfOfficeShrinkagePercentage", label: "Out of Office Shrinkage %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Out of Office Shrinkage: Percentage of paid time that agents are not available for handling interactions while out of office." },
+import { TEAM_METRIC_ROW_DEFINITIONS_MODEL1, AGGREGATED_METRIC_ROW_DEFINITIONS_MODEL1 } from "@/data/model1";
+import { TEAM_METRIC_ROW_DEFINITIONS_MODEL2, AGGREGATED_METRIC_ROW_DEFINITIONS_MODEL2 } from "@/data/model2";
+import { TEAM_METRIC_ROW_DEFINITIONS_MODEL3, AGGREGATED_METRIC_ROW_DEFINITIONS_MODEL3 } from "@/data/model3";
+import { TEAM_METRIC_ROW_DEFINITIONS_MODEL4, AGGREGATED_METRIC_ROW_DEFINITIONS_MODEL4 } from "@/data/model4";
+import { TEAM_METRIC_ROW_DEFINITIONS_MODEL5, AGGREGATED_METRIC_ROW_DEFINITIONS_MODEL5 } from "@/data/model5";
 
+export const TEAM_METRIC_ROW_DEFINITIONS = {
+  model1: TEAM_METRIC_ROW_DEFINITIONS_MODEL1,
+  model2: TEAM_METRIC_ROW_DEFINITIONS_MODEL2,
+  model3: TEAM_METRIC_ROW_DEFINITIONS_MODEL3,
+  model4: TEAM_METRIC_ROW_DEFINITIONS_MODEL4,
+  model5: TEAM_METRIC_ROW_DEFINITIONS_MODEL5,
+};
 
-];
-
-
-export const AGGREGATED_METRIC_ROW_DEFINITIONS: AggregatedMetricDefinitions = [
-  { key: "lobVolumeForecast", label: "Volume Forecast", isEditableForLob: true, step: 1, isCount: true, description: "Total number of interactions forecasted for this LOB." },
-  { key: "lobAverageAHT", label: "Average AHT", isEditableForLob: true, step: 0.1, isTime: true, description: "Average handle time assumed for LOB interactions." },
-  { key: "lobTotalBaseRequiredMinutes", label: "Total Base Req Mins", isEditableForLob: true, isTime: true, step: 1, description: "Total agent minutes required for LOB volume, calculated as Volume * AHT or input directly." },
-  { key: "handlingCapacity", label: "Handling Capacity", isEditableForLob: false, isCount: true, description: "Handling Capacity: The capacity to handle interactions, calculated as Volume Forecast divided by Average AHT.\nFormula: Volume Forecast / Average AHT", isLobOnly: true },
-  { key: "requiredHC", label: "Required HC", isHC: true, description: "Aggregated required headcount from child entities." },
-  { key: "actualHC", label: "Actual/Starting HC", isHC: true, description: "Aggregated actual/starting headcount from child entities." },
-  { key: "overUnderHC", label: "Over/Under HC", isHC: true, description: "Difference between aggregated Actual/Starting HC and Required HC." },
-];
+export const AGGREGATED_METRIC_ROW_DEFINITIONS = {
+  model1: AGGREGATED_METRIC_ROW_DEFINITIONS_MODEL1,
+  model2: AGGREGATED_METRIC_ROW_DEFINITIONS_MODEL2,
+  model3: AGGREGATED_METRIC_ROW_DEFINITIONS_MODEL3,
+  model4: AGGREGATED_METRIC_ROW_DEFINITIONS_MODEL4,
+  model5: AGGREGATED_METRIC_ROW_DEFINITIONS_MODEL5,
+};
 
 export interface FilterOptions {
   businessUnits: BusinessUnitName[];
@@ -328,6 +315,8 @@ export interface HeaderSectionProps {
   onExportCsv: () => void;
   viewMode: 'plan' | 'chart';
   onSetViewMode: (mode: 'plan' | 'chart') => void;
+  selectedModel: string;
+  onSelectModel: (model: string) => void;
 }
 
 export interface RawTeamDataEntry {
@@ -1018,6 +1007,8 @@ function HeaderSection({
   onExportCsv,
   viewMode,
   onSetViewMode,
+  selectedModel,
+  onSelectModel,
 }: HeaderSectionProps) {
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [isAddOpen, setAddOpen] = useState(false);
@@ -1298,6 +1289,48 @@ function HeaderSection({
                           </Sheet>
 
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex items-center gap-2 border rounded-md p-1">
+            <Button
+              variant={selectedModel === "model1" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onSelectModel("model1")}
+              className="h-7 px-3"
+            >
+              Model 1
+            </Button>
+            <Button
+              variant={selectedModel === "model2" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onSelectModel("model2")}
+              className="h-7 px-3"
+            >
+              Model 2
+            </Button>
+            <Button
+              variant={selectedModel === "model3" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onSelectModel("model3")}
+              className="h-7 px-3"
+            >
+              Model 3
+            </Button>
+            <Button
+              variant={selectedModel === "model4" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onSelectModel("model4")}
+              className="h-7 px-3"
+            >
+              Model 4
+            </Button>
+            <Button
+              variant={selectedModel === "model5" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onSelectModel("model5")}
+              className="h-7 px-3"
+            >
+              Model 5
+            </Button>
+          </div>
           <Select value={currentSelectedBusinessUnit} onValueChange={handleSelectBusinessUnit}>
             <SelectTrigger className="w-full lg:w-[180px] text-sm h-9">
               <Building2 className="mr-2 opacity-70" />
@@ -2032,7 +2065,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
   }, [periodHeaders, data, onActiveHierarchyChange, tableBodyScrollRef]);
 
   const renderTeamMetrics = useCallback((item: CapacityDataRow, category: MetricDefinition['category'], baseLevel: number) => {
-    return TEAM_METRIC_ROW_DEFINITIONS
+    return teamMetricDefinitions
       .filter(def => def.category === category)
       .map(metricDef => (
         <MetricRow
@@ -2098,7 +2131,7 @@ const CapacityTableComponent: React.FC<CapacityTableProps> = ({
         rows.push(...renderTeamMetrics(item, 'HCAdjustment', item.level + 2));
       }
     } else {
-      AGGREGATED_METRIC_ROW_DEFINITIONS.forEach(metricDef => {
+      aggregatedMetricDefinitions.forEach(metricDef => {
         // Skip LOB-specific metrics for BU level as per user request (already handled in MetricCellContent)
         if (item.itemType === 'BU' && (metricDef.key === 'lobTotalBaseRequiredMinutes' || metricDef.key === 'lobVolumeForecast' || metricDef.key === 'lobAverageAHT')) {
           return;
@@ -2327,6 +2360,7 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
 
   const [editingCell, setEditingCell] = useState<{ id: string; period: string; metricKey: string } | null>(null);
   const [viewMode, setViewMode] = useState<'plan' | 'chart'>('plan'); // 'plan' or 'chart'
+  const [selectedModel, setSelectedModel] = useState<string>('model1');
 
   const [activeHierarchyContext, setActiveHierarchyContext] = useState<string>("BU / LoB / Team / Metric");
 
@@ -2356,7 +2390,7 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
 
     const processRow = (row: CapacityDataRow, level: number) => {
       const indent = "  ".repeat(level);
-      const metricsToInclude = row.itemType === 'Team' ? TEAM_METRIC_ROW_DEFINITIONS : AGGREGATED_METRIC_ROW_DEFINITIONS;
+      const metricsToInclude = row.itemType === 'Team' ? teamMetricDefinitions : aggregatedMetricDefinitions;
 
       metricsToInclude.forEach(metricDef => {
         // Skip internal metrics for export
@@ -3137,6 +3171,8 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
         onExportCsv={handleExportCsv}
         viewMode={viewMode}
         onSetViewMode={setViewMode}
+        selectedModel={selectedModel}
+        onSelectModel={setSelectedModel}
       />
       <div className="flex-grow overflow-hidden flex flex-col">
         <main className="px-4 pb-4 flex-grow overflow-y-auto">
@@ -3146,8 +3182,8 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
               periodHeaders={displayedPeriodHeaders}
               expandedItems={expandedItems}
               toggleExpand={toggleExpand}
-              teamMetricDefinitions={TEAM_METRIC_ROW_DEFINITIONS}
-              aggregatedMetricDefinitions={AGGREGATED_METRIC_ROW_DEFINITIONS}
+              teamMetricDefinitions={TEAM_METRIC_ROW_DEFINITIONS[selectedModel]}
+              aggregatedMetricDefinitions={AGGREGATED_METRIC_ROW_DEFINITIONS[selectedModel]}
               onTeamMetricChange={handleTeamMetricChange}
               onLobMetricChange={handleLobMetricChange}
               editingCell={editingCell}
