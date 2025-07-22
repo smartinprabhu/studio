@@ -305,8 +305,6 @@ function VolumeBacklogModelView() {
         displayedPeriodHeaders={displayedPeriodHeaders}
         activeHierarchyContext={activeHierarchyContext}
         headerPeriodScrollerRef={headerPeriodScrollerRef}
-        selectedModel={'volume-backlog'}
-        onModelChange={() => {}} // Not used in this view
       />
       <main className="flex-grow overflow-hidden">
         <CapacityTable
