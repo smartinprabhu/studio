@@ -24,31 +24,44 @@ export function ModelTabs({ selectedModel, onModelChange, className }: ModelTabs
   };
 
   return (
-    <div className={cn("flex flex-wrap gap-2 p-4 bg-card border-b border-border", className)}>
-      {AVAILABLE_MODELS.map((model) => (
-        <Button
-          key={model.id}
-          variant={selectedModel === model.id ? "default" : "outline"}
-          onClick={() => onModelChange(model.id)}
-          className={cn(
-            "flex flex-col items-start gap-1 h-auto p-3 min-w-[200px]",
-            selectedModel === model.id && "ring-2 ring-primary ring-offset-2"
-          )}
-        >
-          <div className="flex items-center justify-between w-full">
-            <span className="font-medium text-sm">{model.name}</span>
-            <Badge 
-              variant="outline" 
-              className={cn("text-xs", getComplexityColor(model.complexity))}
-            >
-              {model.complexity}
-            </Badge>
-          </div>
-          <span className="text-xs text-muted-foreground text-left">
-            {model.description}
-          </span>
-        </Button>
-      ))}
+    <div className={cn("bg-card border-b border-border", className)}>
+      <div className="px-4 py-3 border-b border-border/50">
+        <h2 className="text-lg font-semibold text-foreground">Capacity Planning Models</h2>
+        <p className="text-sm text-muted-foreground mt-1">Select a model to configure your capacity planning approach</p>
+      </div>
+      <div className="flex flex-wrap gap-3 p-4">
+        {AVAILABLE_MODELS.map((model) => (
+          <Button
+            key={model.id}
+            variant={selectedModel === model.id ? "default" : "outline"}
+            onClick={() => onModelChange(model.id)}
+            className={cn(
+              "flex flex-col items-start gap-2 h-auto p-4 min-w-[240px] max-w-[280px] transition-all duration-200 hover:scale-[1.02]",
+              selectedModel === model.id && "ring-2 ring-primary ring-offset-2 shadow-lg",
+              "group relative overflow-hidden"
+            )}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="font-semibold text-sm">{model.name}</span>
+              <Badge
+                variant={selectedModel === model.id ? "secondary" : "outline"}
+                className={cn(
+                  "text-xs font-medium transition-colors",
+                  selectedModel === model.id ? "bg-primary-foreground text-primary" : getComplexityColor(model.complexity)
+                )}
+              >
+                {model.complexity}
+              </Badge>
+            </div>
+            <span className="text-xs text-muted-foreground text-left leading-relaxed">
+              {model.description}
+            </span>
+            {selectedModel === model.id && (
+              <div className="absolute inset-0 bg-primary/5 pointer-events-none" />
+            )}
+          </Button>
+        ))}
+      </div>
     </div>
   );
 }
