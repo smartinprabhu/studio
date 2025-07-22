@@ -1,4 +1,3 @@
-typescriptreact
 interface CapacityTableProps {
   data: CapacityData[];
   periodHeaders: PeriodHeader[];
