@@ -703,29 +703,27 @@ export const CapacityTable: React.FC<CapacityTableProps> = memo(({
 
     } else { // BU or LOB
       aggregatedMetricDefinitions.forEach(metricDef => {
+        // Skip LOB-specific input metrics for BU level
         if (item.itemType === 'BU' && (metricDef.key === 'lobVolumeForecast' || metricDef.key === 'lobAverageAHT' || metricDef.key === 'lobTotalBaseRequiredMinutes')) {
-           return; // Do not render LOB-specific inputs for BU
+           return;
         }
-        if (item.itemType === 'LOB' && metricDef.key === 'lobTotalBaseRequiredMinutes' && !metricDef.isEditableForLob){
-          // This condition might be redundant if only one definition exists, but good for clarity
-          // If there's one marked editable and another for display, this would hide the display-only one
-        } else {
-           rows.push(
-            <MetricRow
-              key={`${item.id}-${metricDef.key}`}
-              item={item}
-              metricDef={metricDef}
-              level={item.level + 1}
-              periodHeaders={periodHeaders}
-              onTeamMetricChange={onTeamMetricChange} // Pass down
-              onLobMetricChange={onLobMetricChange}   // Pass down
-              editingCell={editingCell}
-              onSetEditingCell={onSetEditingCell}
-              selectedTimeInterval={selectedTimeInterval}
-              selectedModel={selectedModel}
-            />
-          );
-        }
+
+        // Render all appropriate metrics for LOB and BU
+        rows.push(
+          <MetricRow
+            key={`${item.id}-${metricDef.key}`}
+            item={item}
+            metricDef={metricDef}
+            level={item.level + 1}
+            periodHeaders={periodHeaders}
+            onTeamMetricChange={onTeamMetricChange}
+            onLobMetricChange={onLobMetricChange}
+            editingCell={editingCell}
+            onSetEditingCell={onSetEditingCell}
+            selectedTimeInterval={selectedTimeInterval}
+            selectedModel={selectedModel}
+          />
+        );
       });
     }
     return rows;
