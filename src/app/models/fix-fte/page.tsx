@@ -15,6 +15,8 @@ import type {
   TimeInterval,
   TeamName,
   RawLoBCapacityEntry,
+} from "@/components/capacity-insights/types";
+import {
   ALL_BUSINESS_UNITS,
   BUSINESS_UNIT_CONFIG,
   STANDARD_WEEKLY_WORK_MINUTES,
@@ -25,8 +27,8 @@ import { getDefaultDateRange } from "@/utils/dateUtils";
 
 export default function FixFTEModelPage() {
   const [selectedModel] = useState<ModelType>('fix-fte');
-  const [selectedBusinessUnit, setSelectedBusinessUnit] = useState<BusinessUnitName>("WFS");
-  const [selectedLineOfBusiness, setSelectedLineOfBusiness] = useState<string[]>(["US Chat"]);
+  const [selectedBusinessUnit, setSelectedBusinessUnit] = useState<BusinessUnitName>("POS");
+  const [selectedLineOfBusiness, setSelectedLineOfBusiness] = useState<string[]>(["Phone"]);
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
   const [selectedDateRange, setSelectedDateRange] = useState<DateRange | undefined>(
     getDefaultDateRange("Week", 12)
