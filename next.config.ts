@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   /* config options here */
   webpack: (config, { isServer }) => {
     if (!isServer) {
-      config.externals.push('handlebars');
+      config.externals.push('handlebars', 'dotprompt');
     }
     return config;
   },
