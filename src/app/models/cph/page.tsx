@@ -15,6 +15,8 @@ import type {
   TimeInterval,
   TeamName,
   RawLoBCapacityEntry,
+} from "@/components/capacity-insights/types";
+import {
   ALL_BUSINESS_UNITS,
   BUSINESS_UNIT_CONFIG,
   STANDARD_WEEKLY_WORK_MINUTES,
