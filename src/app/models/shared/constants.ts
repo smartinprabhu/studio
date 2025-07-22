@@ -1,0 +1,2 @@
+export const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60;
+export const STANDARD_MONTHLY_WORK_MINUTES = (40 * 52 / 12) * 60;

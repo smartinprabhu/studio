@@ -2267,7 +2267,14 @@ const getShade = (hsl: string, lightnessOffset: number) => {
   return `hsl(${h} ${s}% ${newL}%)`;
 };
 
-export default function CapacityInsightsPageV2({ navigateSimulator, businessId }) { // Renamed component
+export default function CapacityInsightsPageV2({
+  navigateSimulator,
+  businessId,
+  teamMetricDefinitions = TEAM_METRIC_ROW_DEFINITIONS,
+  aggregatedMetricDefinitions = AGGREGATED_METRIC_ROW_DEFINITIONS,
+  calculateTeamMetricsForPeriod: calculateTeamMetricsForPeriodProp = calculateTeamMetricsForPeriod,
+  modelName = "Volume & Backlog Hybrid Model",
+}) {
   const [localRawCapacityDataSource, setLocalRawCapacityDataSource] = useState<RawLoBCapacityEntry[]>(() => {
     // Adjust initialMockRawCapacityData if its generation depends on specific BU names not present in V2
     // For now, assuming initialMockRawCapacityData generation logic is compatible or will be reviewed in the next step
@@ -2897,10 +2904,12 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
             }
           }
 
-          periodicTeamMetrics[monthPeriodOrWeekPeriod] = calculateTeamMetricsForPeriod(
+          const aggregatedDataForPeriod = lobRawEntry.periodicData?.[monthPeriodOrWeekPeriod] || {};
+          periodicTeamMetrics[monthPeriodOrWeekPeriod] = calculateTeamMetricsForPeriodProp(
             teamInputForPeriod,
             lobTotalBaseRequiredMinutesForCalcContext,
-            standardWorkMinutes
+            standardWorkMinutes,
+            aggregatedDataForPeriod
           );
         });
 
@@ -2928,30 +2937,39 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
         const overUnderHCSum = (actHcSum !== null && reqHcSum !== null) ? actHcSum - reqHcSum : null;
 
         let ahtSum = 0;
+        let cphSum = 0;
         let teamCountWithAHT = 0;
+        let teamCountWithCPH = 0;
+
         childrenTeamsDataRows.forEach(teamRow => {
           const teamPeriodMetric = teamRow.periodicData[period] as TeamPeriodicMetrics;
           if (teamPeriodMetric?.aht !== null && teamPeriodMetric?.aht !== undefined) {
             ahtSum += teamPeriodMetric.aht;
             teamCountWithAHT++;
           }
+          if (teamPeriodMetric?.cph !== null && teamPeriodMetric?.cph !== undefined) {
+            cphSum += teamPeriodMetric.cph;
+            teamCountWithCPH++;
+          }
         });
         const calculatedAvgAHTFromTeams = teamCountWithAHT > 0 ? ahtSum / teamCountWithAHT : null;
+        const calculatedAvgCPHFromTeams = teamCountWithCPH > 0 ? cphSum / teamCountWithCPH : null;
 
         lobPeriodicData[period] = {
           lobVolumeForecast: currentSelectedTimeInterval === "Month" ? monthlyAggregatedLobInputs.lobVolumeForecast?.[period] : lobRawEntry.lobVolumeForecast?.[period] ?? null,
           lobAverageAHT: currentSelectedTimeInterval === "Month" ? monthlyAggregatedLobInputs.lobAverageAHT?.[period] : lobRawEntry.lobAverageAHT?.[period] ?? null,
+          lobAverageCPH: calculatedAvgCPHFromTeams,
           lobTotalBaseRequiredMinutes: lobCalculatedBaseRequiredMinutes[period] ?? null, // This was pre-calculated based on interval
           requiredHC: reqHcSum,
           actualHC: actHcSum,
           overUnderHC: overUnderHCSum,
           lobCalculatedAverageAHT: calculatedAvgAHTFromTeams,
-          handlingCapacity: currentSelectedTimeInterval === "Month" 
-            ? (monthlyAggregatedLobInputs.lobVolumeForecast?.[period] && monthlyAggregatedLobInputs.lobAverageAHT?.[period] 
-                ? monthlyAggregatedLobInputs.lobVolumeForecast[period] / monthlyAggregatedLobInputs.lobAverageAHT[period] 
+          handlingCapacity: currentSelectedTimeInterval === "Month"
+            ? (monthlyAggregatedLobInputs.lobVolumeForecast?.[period] && monthlyAggregatedLobInputs.lobAverageAHT?.[period]
+                ? monthlyAggregatedLobInputs.lobVolumeForecast[period] / monthlyAggregatedLobInputs.lobAverageAHT[period]
                 : null)
-            : (lobRawEntry.lobVolumeForecast?.[period] && lobRawEntry.lobAverageAHT?.[period] 
-                ? lobRawEntry.lobVolumeForecast[period] / lobRawEntry.lobAverageAHT[period] 
+            : (lobRawEntry.lobVolumeForecast?.[period] && lobRawEntry.lobAverageAHT?.[period]
+                ? lobRawEntry.lobVolumeForecast[period] / lobRawEntry.lobAverageAHT[period]
                 : null),
         };
       });
@@ -3147,8 +3165,8 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
               periodHeaders={displayedPeriodHeaders}
               expandedItems={expandedItems}
               toggleExpand={toggleExpand}
-              teamMetricDefinitions={TEAM_METRIC_ROW_DEFINITIONS}
-              aggregatedMetricDefinitions={AGGREGATED_METRIC_ROW_DEFINITIONS}
+              teamMetricDefinitions={teamMetricDefinitions}
+              aggregatedMetricDefinitions={aggregatedMetricDefinitions}
               onTeamMetricChange={handleTeamMetricChange}
               onLobMetricChange={handleLobMetricChange}
               editingCell={editingCell}
