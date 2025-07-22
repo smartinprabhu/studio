@@ -1,4 +1,3 @@
-
 import type { DateRange } from "react-day-picker";
 import {
   startOfWeek as dateFnsStartOfWeek, // Aliasing to avoid conflict if startOfWeek is defined locally
@@ -72,26 +71,19 @@ export const ALL_MONTH_HEADERS = Array.from({ length: 24 }, (_, i) => {
 
 
 export const BUSINESS_UNIT_CONFIG = {
-  "WFS": {
-    name: "WFS",
+  "POS": {
+    name: "POS",
     lonsOfBusiness: [
-      "US Chat", "US Phone", "Core Support", "Customer Returns", "Inventory Management",
-      "Dispute Management", "IBE Management", "FC Liaison", "Flex Team", "Help Desk", "MCS",
-      "China Mandarin Chat", "China Mandarin Email", "China English Chat", "China English Email",
-      "Strike Through", "Walmart Import"
+      "Phone", "Chat", "Case Type 1", "Case Type 2", "Case Type 3",
+      "Case Type 4", "Case Type 5", "Case Type 6"
     ]
   },
-  "SFF": {
-    name: "SFF",
-    lonsOfBusiness: ["SFF LoB Alpha", "SFF LoB Bravo", "SFF LoB Charlie", "SFF LoB Delta"]
-  },
-  "RSO": {
-    name: "RSO",
-    lonsOfBusiness: ["RSO LoB Xray", "RSO LoB Yankee", "RSO LoB Zulu"]
-  },
-  "Go Local": {
-    name: "Go Local",
-    lonsOfBusiness: ["GoLocal Partner Support", "GoLocal Customer Care", "GoLocal Dispatch"]
+  "MOS": {
+    name: "MOS",
+    lonsOfBusiness: [
+      "Case", "Chat", "Phone", "Feud Case", "International English Case",
+      "International Spanish Case", "International English Chat", "International Spanish Chat"
+    ]
   }
 } as const;
 
@@ -311,5 +303,3 @@ export const findFiscalWeekHeaderForDate = (targetDate: Date, allFiscalHeaders: 
 };
 
 // --- END CONSOLIDATED TYPES ---
-
-    
