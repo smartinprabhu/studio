@@ -702,30 +702,82 @@ export const CapacityTable: React.FC<CapacityTableProps> = memo(({
       rows.push(...renderSubSection(item.id, "HC Adjustments", adjustmentMetrics, item, item.level + 1));
 
     } else { // BU or LOB
-      aggregatedMetricDefinitions.forEach(metricDef => {
-        if (item.itemType === 'BU' && (metricDef.key === 'lobVolumeForecast' || metricDef.key === 'lobAverageAHT' || metricDef.key === 'lobTotalBaseRequiredMinutes')) {
-           return; // Do not render LOB-specific inputs for BU
+      // Separate LOB input metrics from HC summary metrics for better organization
+      const lobInputMetrics = aggregatedMetricDefinitions.filter(def =>
+        def.key === 'lobVolumeForecast' || def.key === 'lobAverageAHT' || def.key === 'lobTotalBaseRequiredMinutes'
+      );
+      const hcSummaryMetrics = aggregatedMetricDefinitions.filter(def =>
+        def.key === 'requiredHC' || def.key === 'actualHC' || def.key === 'overUnderHC'
+      );
+
+      // For LOB items, show input metrics first, then HC summary
+      if (item.itemType === 'LOB') {
+        // LOB Input Metrics section
+        if (lobInputMetrics.length > 0) {
+          rows.push(
+            <TableRow key={`${item.id}_inputs_header`} className="hover:bg-muted/30 bg-muted/10">
+              <TableCell
+                className="sticky left-0 z-20 bg-muted/10 font-medium text-foreground whitespace-nowrap py-2 border-r border-border/50"
+                style={{ paddingLeft: `${(item.level + 1) * 1.5 + 0.5}rem`, paddingRight: '1rem' }}
+              >
+                <span className="text-sm font-semibold text-primary">LOB Configuration</span>
+              </TableCell>
+              {periodHeaders.map(ph => <TableCell key={`${item.id}_inputs_${ph}_placeholder`} className="py-2 px-2 min-w-[100px] border-l border-border/50 bg-muted/10"></TableCell>)}
+            </TableRow>
+          );
+
+          lobInputMetrics.forEach(metricDef => {
+            rows.push(
+              <MetricRow
+                key={`${item.id}-${metricDef.key}`}
+                item={item}
+                metricDef={metricDef}
+                level={item.level + 2}
+                periodHeaders={periodHeaders}
+                onTeamMetricChange={onTeamMetricChange}
+                onLobMetricChange={onLobMetricChange}
+                editingCell={editingCell}
+                onSetEditingCell={onSetEditingCell}
+                selectedTimeInterval={selectedTimeInterval}
+                selectedModel={selectedModel}
+              />
+            );
+          });
         }
-        if (item.itemType === 'LOB' && metricDef.key === 'lobTotalBaseRequiredMinutes' && !metricDef.isEditableForLob){
-          // This condition might be redundant if only one definition exists, but good for clarity
-          // If there's one marked editable and another for display, this would hide the display-only one
-        } else {
-           rows.push(
-            <MetricRow
-              key={`${item.id}-${metricDef.key}`}
-              item={item}
-              metricDef={metricDef}
-              level={item.level + 1}
-              periodHeaders={periodHeaders}
-              onTeamMetricChange={onTeamMetricChange} // Pass down
-              onLobMetricChange={onLobMetricChange}   // Pass down
-              editingCell={editingCell}
-              onSetEditingCell={onSetEditingCell}
-              selectedTimeInterval={selectedTimeInterval}
-              selectedModel={selectedModel}
-            />
+
+        // HC Summary section
+        if (hcSummaryMetrics.length > 0) {
+          rows.push(
+            <TableRow key={`${item.id}_hc_header`} className="hover:bg-muted/30 bg-muted/10">
+              <TableCell
+                className="sticky left-0 z-20 bg-muted/10 font-medium text-foreground whitespace-nowrap py-2 border-r border-border/50"
+                style={{ paddingLeft: `${(item.level + 1) * 1.5 + 0.5}rem`, paddingRight: '1rem' }}
+              >
+                <span className="text-sm font-semibold text-blue-600">HC Summary</span>
+              </TableCell>
+              {periodHeaders.map(ph => <TableCell key={`${item.id}_hc_${ph}_placeholder`} className="py-2 px-2 min-w-[100px] border-l border-border/50 bg-muted/10"></TableCell>)}
+            </TableRow>
           );
         }
+      }
+
+      // Render HC summary metrics for both LOB and BU
+      hcSummaryMetrics.forEach(metricDef => {
+        rows.push(
+          <MetricRow
+            key={`${item.id}-${metricDef.key}`}
+            item={item}
+            metricDef={metricDef}
+            level={item.itemType === 'LOB' ? item.level + 2 : item.level + 1}
+            periodHeaders={periodHeaders}
+            onTeamMetricChange={onTeamMetricChange}
+            onLobMetricChange={onLobMetricChange}
+            editingCell={editingCell}
+            onSetEditingCell={onSetEditingCell}
+            selectedTimeInterval={selectedTimeInterval}
+            selectedModel={selectedModel}
+          />
+        );
       });
     }
     return rows;
