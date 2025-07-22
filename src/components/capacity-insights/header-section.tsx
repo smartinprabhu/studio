@@ -85,39 +85,42 @@ export function HeaderSection({
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end gap-x-4 gap-y-2">
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-wrap xl:items-end gap-x-4 gap-y-4">
 
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Business Unit</Label>
+          <div className="flex flex-col gap-2">
+            <Label className="text-sm font-medium text-foreground">Business Unit</Label>
             <Select value={selectedBusinessUnit} onValueChange={onSelectBusinessUnit}>
-              <SelectTrigger className="w-full lg:w-[180px] text-sm h-9">
-                <Building2 className="mr-2 h-4 w-4 opacity-70" />
-                <SelectValue placeholder="Business Unit" />
+              <SelectTrigger className="w-full xl:w-[200px] text-sm h-10 border-2 transition-colors hover:border-primary/50 focus:border-primary">
+                <Building2 className="mr-2 h-4 w-4 text-primary" />
+                <SelectValue placeholder="Select Business Unit" />
               </SelectTrigger>
               <SelectContent>
                 {allBusinessUnits.map((bu) => (
-                  <SelectItem key={bu} value={bu}>
-                    {bu}
+                  <SelectItem key={bu} value={bu} className="cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      <span>{bu}</span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Line of Business</Label>
+          <div className="flex flex-col gap-2">
+            <Label className="text-sm font-medium text-foreground">Line of Business</Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-full lg:w-[240px] text-sm h-9 justify-between">
+                <Button variant="outline" className="w-full xl:w-[280px] text-sm h-10 justify-between border-2 transition-colors hover:border-primary/50 focus:border-primary">
                   <div className="flex items-center truncate">
-                    <Briefcase className="mr-2 h-4 w-4 opacity-70 flex-shrink-0" />
+                    <Briefcase className="mr-2 h-4 w-4 text-primary flex-shrink-0" />
                     <span className="truncate" title={lobDropdownLabel}>{lobDropdownLabel}</span>
                   </div>
-                  <ChevronDown className="h-4 w-4 opacity-50 flex-shrink-0" />
+                  <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-full md:w-[240px]">
-                <DropdownMenuLabel>Select Lines of Business</DropdownMenuLabel>
+              <DropdownMenuContent className="w-[280px]">
+                <DropdownMenuLabel className="text-sm font-semibold">Select Lines of Business</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {actualLobsForCurrentBu.length > 0 ? (
                   actualLobsForCurrentBu.map((lob) => (
@@ -125,9 +128,13 @@ export function HeaderSection({
                       key={lob}
                       checked={selectedLineOfBusiness.includes(lob)}
                       onCheckedChange={(checked) => handleLobSelectionChange(lob, Boolean(checked))}
-                      onSelect={(e) => e.preventDefault()} // Keep menu open after selection
+                      onSelect={(e) => e.preventDefault()}
+                      className="cursor-pointer"
                     >
-                      {lob}
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="h-4 w-4 text-muted-foreground" />
+                        <span>{lob}</span>
+                      </div>
                     </DropdownMenuCheckboxItem>
                   ))
                 ) : (
@@ -137,14 +144,17 @@ export function HeaderSection({
             </DropdownMenu>
           </div>
           
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Interval</Label>
-            <div className="flex items-center gap-1 border rounded-md p-0.5 bg-muted h-9">
+          <div className="flex flex-col gap-2">
+            <Label className="text-sm font-medium text-foreground">Interval</Label>
+            <div className="flex items-center gap-1 border-2 rounded-lg p-1 bg-muted/30 h-10 transition-colors hover:border-primary/50">
               <Button
                 variant={selectedTimeInterval === "Week" ? "default" : "ghost"}
                 size="sm"
                 onClick={() => onSelectTimeInterval("Week")}
-                className="h-full px-3 flex-1 text-xs"
+                className={cn(
+                  "h-8 px-4 flex-1 text-sm font-medium transition-all",
+                  selectedTimeInterval === "Week" && "shadow-sm"
+                )}
               >
                 Week
               </Button>
@@ -152,16 +162,21 @@ export function HeaderSection({
                 variant={selectedTimeInterval === "Month" ? "default" : "ghost"}
                 size="sm"
                 onClick={() => onSelectTimeInterval("Month")}
-                className="h-full px-3 flex-1 text-xs"
+                className={cn(
+                  "h-8 px-4 flex-1 text-sm font-medium transition-all",
+                  selectedTimeInterval === "Month" && "shadow-sm"
+                )}
               >
                 Month
               </Button>
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Date Range</Label>
-            <DateRangePicker date={selectedDateRange} onDateChange={onSelectDateRange} allAvailablePeriods={allAvailablePeriods} />
+          <div className="flex flex-col gap-2">
+            <Label className="text-sm font-medium text-foreground">Date Range</Label>
+            <div className="[&_button]:h-10 [&_button]:border-2 [&_button]:transition-colors [&_button:hover]:border-primary/50">
+              <DateRangePicker date={selectedDateRange} onDateChange={onSelectDateRange} allAvailablePeriods={allAvailablePeriods} />
+            </div>
           </div>
         </div>
 
