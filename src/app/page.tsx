@@ -61,6 +61,18 @@ function VolumeBacklogModelView() {
     return allAvailablePeriods.slice(0, 12);
   }, [selectedDateRange, allAvailablePeriods]);
 
+  // Auto-expand LOBs to show their metrics by default
+  useEffect(() => {
+    const newExpandedState: Record<string, boolean> = {};
+    rawCapacityData.forEach(entry => {
+      const lobId = entry.id;
+      newExpandedState[lobId] = true; // Auto-expand LOBs
+      // Auto-expand BUs as well
+      newExpandedState[`bu-${entry.bu.toLowerCase().replace(/\s+/g, '-')}`] = true;
+    });
+    setExpandedItems(prev => ({ ...prev, ...newExpandedState }));
+  }, [rawCapacityData]);
+
   const processedCapacityData = useMemo(() => {
     const standardWorkMinutesForPeriod = selectedTimeInterval === "Week" 
       ? STANDARD_WEEKLY_WORK_MINUTES 
