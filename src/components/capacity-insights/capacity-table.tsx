@@ -233,6 +233,8 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
     displayValue = `${numValue.toFixed(0)} min`;
   } else if (metricDef.key === 'billableHoursRequire') {
     displayValue = `${numValue.toFixed(0)} hrs`;
+  } else if (metricDef.key === 'handlingCapacity') {
+    displayValue = `${numValue.toFixed(0)}`;
   } else if (metricDef.isHC || ['moveIn', 'moveOut', 'newHireBatch', 'newHireProduction', 'attritionLossHC', 'endingHC', 'hcAfterAttrition'].includes(metricDef.key as string)) {
     if (selectedModel === 'fix-fte' && metricDef.key === 'requiredFTE') {
       displayValue = isNaN(numValue) ? '-' : numValue.toFixed(2);
@@ -256,20 +258,36 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
   if (item.itemType === 'Team') {
     switch (metricDef.key) {
       case 'requiredHC':
+      case 'requiredFTE':
         if (teamMetrics?._calculatedRequiredAgentMinutes !== null && typeof teamMetrics._calculatedRequiredAgentMinutes === 'number' &&
-            teamMetrics?.shrinkagePercentage !== null && typeof teamMetrics.shrinkagePercentage === 'number' &&
-            teamMetrics?.occupancyPercentage !== null && typeof teamMetrics.occupancyPercentage === 'number' && teamMetrics.occupancyPercentage > 0 &&
+            (teamMetrics?.shrinkagePercentage !== null && typeof teamMetrics.shrinkagePercentage === 'number' || selectedModel === 'fix-fte' || selectedModel === 'fix-hc') &&
+            (teamMetrics?.occupancyPercentage !== null && typeof teamMetrics.occupancyPercentage === 'number' && teamMetrics.occupancyPercentage > 0 || selectedModel === 'fix-fte' || selectedModel === 'fix-hc') &&
             standardWorkMinutesForPeriod > 0) {
-          const effMinsPerHC = standardWorkMinutesForPeriod * (1 - (teamMetrics.shrinkagePercentage / 100)) * (teamMetrics.occupancyPercentage / 100);
+          let effMinsPerHC;
+          if (selectedModel === 'fix-fte' || selectedModel === 'fix-hc') {
+            // Simplified calculation for Fix models
+            effMinsPerHC = standardWorkMinutesForPeriod * 0.75; // Simplified factor
+          } else {
+            effMinsPerHC = standardWorkMinutesForPeriod * (1 - (teamMetrics.shrinkagePercentage / 100)) * (teamMetrics.occupancyPercentage / 100);
+          }
           if (effMinsPerHC > 0) {
-            formulaText = `Formula: Team Eff. Req. Agent Mins / (Std Work Mins * (1-Shrink%) * Occupancy%)\n` +
-                          `Calc: ${teamMetrics._calculatedRequiredAgentMinutes.toFixed(0)} min / (${standardWorkMinutesForPeriod.toFixed(0)} * (1 - ${(teamMetrics.shrinkagePercentage / 100).toFixed(2)}) * ${(teamMetrics.occupancyPercentage / 100).toFixed(2)}) = ${numValue.toFixed(2)} HC\n` +
+            const metricLabel = metricDef.key === 'requiredFTE' ? 'FTE' : 'HC';
+            if (selectedModel === 'fix-fte' || selectedModel === 'fix-hc') {
+              formulaText = `Formula: Team Eff. Req. Agent Mins / (Std Work Mins * Simplified Factor)\n` +
+                            `Calc: ${teamMetrics._calculatedRequiredAgentMinutes.toFixed(0)} min / (${standardWorkMinutesForPeriod.toFixed(0)} * 0.75) = ${numValue.toFixed(2)} ${metricLabel}\n` +
+                            `(Simplified methodology for ${selectedModel.toUpperCase()} model)`;
+            } else {
+              formulaText = `Formula: Team Eff. Req. Agent Mins / (Std Work Mins * (1-Shrink%) * Occupancy%)\n` +
+                            `Calc: ${teamMetrics._calculatedRequiredAgentMinutes.toFixed(0)} min / (${standardWorkMinutesForPeriod.toFixed(0)} * (1 - ${(teamMetrics.shrinkagePercentage / 100).toFixed(2)}) * ${(teamMetrics.occupancyPercentage / 100).toFixed(2)}) = ${numValue.toFixed(2)} ${metricLabel}\n`;
+            }
                           `(Effective Productive Mins per HC: ${effMinsPerHC.toFixed(0)})`;
           } else {
-            formulaText = `Formula: Team Eff. Req. Agent Mins / (Std Work Mins * (1-Shrink%) * Occupancy%)\n(Cannot calculate due to zero denominator component)`;
+            const metricLabel = metricDef.key === 'requiredFTE' ? 'FTE' : 'HC';
+            formulaText = `Formula: Team Eff. Req. Agent Mins / (Std Work Mins * ...)\n(Cannot calculate due to zero denominator component)`;
           }
         } else if (teamMetrics?._calculatedRequiredAgentMinutes === 0) {
-          formulaText = `Formula: Team Eff. Req. Agent Mins / (Std Work Mins * (1-Shrink%) * Occupancy%)\nCalculation: 0 / (...) = 0 HC`;
+          const metricLabel = metricDef.key === 'requiredFTE' ? 'FTE' : 'HC';
+          formulaText = `Formula: Team Eff. Req. Agent Mins / (Std Work Mins * ...)\nCalculation: 0 / (...) = 0 ${metricLabel}`;
         }
         break;
       case '_calculatedRequiredAgentMinutes':
@@ -295,9 +313,13 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
         }
         break;
       case 'overUnderHC':
+        const isOverUnderFTE = selectedModel === 'fix-fte' && metricDef.label?.includes('FTE');
         if (teamMetrics?.actualHC !== null && typeof teamMetrics.actualHC === 'number' &&
-            teamMetrics?.requiredHC !== null && typeof teamMetrics.requiredHC === 'number') {
-          formulaText = `Formula: Actual HC - Required HC\nCalc: ${Math.round(teamMetrics.actualHC)} HC - ${Math.round(teamMetrics.requiredHC)} HC = ${Math.round(numValue)} HC`;
+            ((teamMetrics?.requiredHC !== null && typeof teamMetrics.requiredHC === 'number') || 
+             (teamMetrics?.requiredFTE !== null && typeof teamMetrics.requiredFTE === 'number'))) {
+          const requiredValue = isOverUnderFTE ? teamMetrics.requiredFTE : teamMetrics.requiredHC;
+          const metricLabel = isOverUnderFTE ? 'FTE' : 'HC';
+          formulaText = `Formula: Actual HC - Required ${metricLabel}\nCalc: ${Math.round(teamMetrics.actualHC)} HC - ${requiredValue?.toFixed(2)} ${metricLabel} = ${numValue.toFixed(2)} ${metricLabel}`;
         }
         break;
       case 'attritionLossHC':
@@ -325,12 +347,17 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
   } else if (item.itemType === 'LOB' || item.itemType === 'BU') { // Aggregated metrics
     switch (metricDef.key) {
       case 'overUnderHC':
+        const isAggOverUnderFTE = selectedModel === 'fix-fte' && metricDef.label?.includes('FTE');
         if (aggMetrics?.actualHC !== null && typeof aggMetrics.actualHC === 'number' &&
-            aggMetrics?.requiredHC !== null && typeof aggMetrics.requiredHC === 'number') {
-          formulaText = `Formula: Agg. Actual HC - Agg. Required HC\nCalc: ${Math.round(aggMetrics.actualHC)} HC - ${Math.round(aggMetrics.requiredHC)} HC = ${Math.round(numValue)} HC`;
+            ((aggMetrics?.requiredHC !== null && typeof aggMetrics.requiredHC === 'number') ||
+             (aggMetrics?.requiredFTE !== null && typeof aggMetrics.requiredFTE === 'number'))) {
+          const requiredValue = isAggOverUnderFTE ? aggMetrics.requiredFTE : aggMetrics.requiredHC;
+          const metricLabel = isAggOverUnderFTE ? 'FTE' : 'HC';
+          formulaText = `Formula: Agg. Actual HC - Agg. Required ${metricLabel}\nCalc: ${Math.round(aggMetrics.actualHC)} HC - ${requiredValue ? Math.round(requiredValue) : 'N/A'} ${metricLabel} = ${Math.round(numValue)} ${metricLabel}`;
         }
         break;
       case 'requiredHC':
+      case 'requiredFTE':
       case 'actualHC':
         const childType = item.itemType === 'BU' ? 'LOBs' : 'Teams';
         const childNames = item.children?.map(child => child.name).join(', ') || 'N/A';
@@ -347,6 +374,21 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
         break;
       case 'lobTotalBaseRequiredMinutes':
         if (item.itemType === 'LOB' && aggMetrics && 'lobVolumeForecast' in aggMetrics && 'lobAverageAHT' in aggMetrics) {
+            if (selectedModel === 'cph' && 'averageCPH' in aggMetrics) {
+              // CPH model calculation
+              const volume = aggMetrics.lobVolumeForecast;
+              const cph = (aggMetrics as any).averageCPH;
+              let calculatedMinsText = "N/A";
+              if (typeof volume === 'number' && typeof cph === 'number' && cph > 0) {
+                  calculatedMinsText = ((volume / cph) * 60).toFixed(0);
+              } else if (typeof numValue === 'number') {
+                  calculatedMinsText = numValue.toFixed(0);
+              }
+              formulaText = `Formula: (LOB Volume Forecast / LOB Avg CPH) * 60\n` +
+                           `Calc: (${typeof volume === 'number' ? volume.toFixed(0) : 'N/A'} / ${typeof cph === 'number' ? cph.toFixed(1) : 'N/A'}) * 60 = ${calculatedMinsText} min\n` +
+                           `(Value may be direct input or calculated from LOB Volume Forecast and LOB Average CPH)`;
+            } else {
+              // Standard AHT calculation
             const volume = aggMetrics.lobVolumeForecast;
             const aht = aggMetrics.lobAverageAHT;
             let calculatedMinsText = "N/A";
@@ -359,6 +401,7 @@ const MetricCellContent: React.FC<MetricCellContentProps> = memo(({
              formulaText = `Formula: LOB Volume Forecast * LOB Avg AHT\n` +
                            `Calc: ${typeof volume === 'number' ? volume.toFixed(0) : 'N/A'} * ${typeof aht === 'number' ? aht.toFixed(1) : 'N/A'} = ${calculatedMinsText} min\n` +
                            `(Value may be direct input or calculated from LOB Volume Forecast and LOB Average AHT)`;
+            }
         }
         break;
     }
