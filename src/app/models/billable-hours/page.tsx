@@ -25,8 +25,8 @@ import { getDefaultDateRange } from "@/utils/dateUtils";
 
 export default function BillableHoursModelPage() {
   const [selectedModel] = useState<ModelType>('billable-hours');
-  const [selectedBusinessUnit, setSelectedBusinessUnit] = useState<BusinessUnitName>("WFS");
-  const [selectedLineOfBusiness, setSelectedLineOfBusiness] = useState<string[]>(["US Chat"]);
+  const [selectedBusinessUnit, setSelectedBusinessUnit] = useState<BusinessUnitName>("POS");
+  const [selectedLineOfBusiness, setSelectedLineOfBusiness] = useState<string[]>(["Phone"]);
   const [selectedTimeInterval, setSelectedTimeInterval] = useState<TimeInterval>("Week");
   const [selectedDateRange, setSelectedDateRange] = useState<DateRange | undefined>(
     getDefaultDateRange("Week", 12)
