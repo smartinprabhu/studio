@@ -3225,7 +3225,7 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
             }
           }
 
-          periodicTeamMetrics[monthPeriodOrWeekPeriod] = calculateTeamMetricsForPeriod(
+          periodicTeamMetrics[monthPeriodOrWeekPeriod] = getCalculationFunction(selectedModel)(
             teamInputForPeriod,
             lobTotalBaseRequiredMinutesForCalcContext,
             standardWorkMinutes
