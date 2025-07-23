@@ -3406,6 +3406,9 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground rounded-lg min-h-0">
+      <div className="bg-primary/10 px-4 py-2 border-b border-border">
+        <p className="text-sm font-medium">Current Model: <span className="font-bold text-primary">{selectedModel}</span></p>
+      </div>
       <ModelTabs
         selectedModel={selectedModel}
         onModelChange={setSelectedModel}
