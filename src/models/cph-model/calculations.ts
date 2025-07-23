@@ -51,9 +51,9 @@ export function calculateCPHTeamMetricsForPeriod(
   }
 
   // 7. Actual productive minutes
-  if (defaults.actualHC !== null && shrinkageFactor > 0 && occupancyFactor > 0) {
-    defaults._calculatedActualProductiveAgentMinutes = 
-      defaults.actualHC * standardWorkMinutes * shrinkageFactor * occupancyFactor;
+  if (defaults.actualHC !== null && combinedShrinkageFactor > 0 && occupancyFactor > 0) {
+    defaults._calculatedActualProductiveAgentMinutes =
+      defaults.actualHC * standardWorkMinutes * combinedShrinkageFactor * occupancyFactor;
   }
 
   return defaults;
