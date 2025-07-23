@@ -2893,20 +2893,45 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
 
       const lobEntry = newData[lobEntryIndex];
 
-      if (metricKey === 'lobVolumeForecast' || metricKey === 'lobAverageAHT') {
+      if (metricKey === 'lobVolumeForecast' || metricKey === 'lobAverageAHT' || metricKey === 'lobAverageCPH' || metricKey === 'billableHoursRequire') {
         if (!lobEntry[metricKey]) {
           (lobEntry as any)[metricKey] = {};
         }
         (lobEntry[metricKey] as any)[periodHeader] = newValue;
 
-        const volume = lobEntry.lobVolumeForecast?.[periodHeader];
-        const aht = lobEntry.lobAverageAHT?.[period];
-        if (typeof volume === 'number' && volume > 0 && typeof aht === 'number' && aht > 0) {
-          if (!lobEntry.lobTotalBaseRequiredMinutes) lobEntry.lobTotalBaseRequiredMinutes = {};
-          lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = volume * aht;
-        } else if (volume === null || aht === null || volume === 0 || aht === 0) {
-          if (!lobEntry.lobTotalBaseRequiredMinutes) lobEntry.lobTotalBaseRequiredMinutes = {};
-          lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = null;
+        // Handle different model calculations
+        if (selectedModel === 'cph') {
+          const volume = lobEntry.lobVolumeForecast?.[periodHeader];
+          const cph = (lobEntry as any).lobAverageCPH?.[periodHeader];
+          if (typeof volume === 'number' && volume > 0 && typeof cph === 'number' && cph > 0) {
+            const aht = 60 / cph; // Convert CPH to AHT
+            if (!lobEntry.lobTotalBaseRequiredMinutes) lobEntry.lobTotalBaseRequiredMinutes = {};
+            lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = volume * aht;
+          } else if (volume === null || cph === null || volume === 0 || cph === 0) {
+            if (!lobEntry.lobTotalBaseRequiredMinutes) lobEntry.lobTotalBaseRequiredMinutes = {};
+            lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = null;
+          }
+        } else if (selectedModel === 'billable-hours') {
+          const billableHours = (lobEntry as any).billableHoursRequire?.[periodHeader];
+          const aht = lobEntry.lobAverageAHT?.[periodHeader];
+          if (typeof billableHours === 'number' && billableHours > 0 && typeof aht === 'number' && aht > 0) {
+            if (!lobEntry.lobTotalBaseRequiredMinutes) lobEntry.lobTotalBaseRequiredMinutes = {};
+            lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = billableHours * aht;
+          } else if (billableHours === null || aht === null || billableHours === 0 || aht === 0) {
+            if (!lobEntry.lobTotalBaseRequiredMinutes) lobEntry.lobTotalBaseRequiredMinutes = {};
+            lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = null;
+          }
+        } else {
+          // Volume & Backlog, Fix FTE, Fix HC models
+          const volume = lobEntry.lobVolumeForecast?.[periodHeader];
+          const aht = lobEntry.lobAverageAHT?.[periodHeader];
+          if (typeof volume === 'number' && volume > 0 && typeof aht === 'number' && aht > 0) {
+            if (!lobEntry.lobTotalBaseRequiredMinutes) lobEntry.lobTotalBaseRequiredMinutes = {};
+            lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = volume * aht;
+          } else if (volume === null || aht === null || volume === 0 || aht === 0) {
+            if (!lobEntry.lobTotalBaseRequiredMinutes) lobEntry.lobTotalBaseRequiredMinutes = {};
+            lobEntry.lobTotalBaseRequiredMinutes[periodHeader] = null;
+          }
         }
       } else if (metricKey === 'lobTotalBaseRequiredMinutes') {
         if (!lobEntry.lobTotalBaseRequiredMinutes) {
