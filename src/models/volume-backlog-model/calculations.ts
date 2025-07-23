@@ -7,7 +7,8 @@ export function calculateTeamMetricsForPeriod(
 ): TeamPeriodicMetrics {
   const defaults: TeamPeriodicMetrics = {
     aht: null,
-    shrinkagePercentage: null,
+    inOfficeShrinkagePercentage: null,
+    outOfOfficeShrinkagePercentage: null,
     occupancyPercentage: null,
     backlogPercentage: null,
     attritionPercentage: null,
@@ -17,6 +18,8 @@ export function calculateTeamMetricsForPeriod(
     moveOut: null,
     newHireBatch: null,
     newHireProduction: null,
+    handlingCapacity: null,
+    _productivity: null,
     _calculatedRequiredAgentMinutes: null,
     _calculatedActualProductiveAgentMinutes: null,
     requiredHC: null,
@@ -24,6 +27,7 @@ export function calculateTeamMetricsForPeriod(
     attritionLossHC: null,
     hcAfterAttrition: null,
     endingHC: null,
+    _lobTotalBaseReqMinutesForCalc: null,
     ...teamInputDataCurrentPeriod,
   };
 
@@ -34,10 +38,11 @@ export function calculateTeamMetricsForPeriod(
   defaults._calculatedRequiredAgentMinutes = effectiveTeamRequiredMinutes;
 
   // Calculate Required HC
-  // Formula: Effective Required Minutes / (Standard Minutes * (1 - Shrinkage%) * Occupancy%)
+  // Formula: Effective Required Minutes / (Standard Minutes * (1 - In Office Shrinkage%) * (1 - Out of Office Shrinkage%) * Occupancy%)
   let requiredHC = null;
   const effectiveMinutesPerHC = standardWorkMinutesForPeriod *
-    (1 - ((defaults.shrinkagePercentage ?? 0) / 100)) *
+    (1 - ((defaults.inOfficeShrinkagePercentage ?? 0) / 100)) *
+    (1 - ((defaults.outOfOfficeShrinkagePercentage ?? 0) / 100)) *
     ((defaults.occupancyPercentage ?? 0) / 100);
 
   if (effectiveTeamRequiredMinutes > 0 && effectiveMinutesPerHC > 0) {
@@ -51,10 +56,11 @@ export function calculateTeamMetricsForPeriod(
   defaults.overUnderHC = (currentActualHC !== null && requiredHC !== null) ? currentActualHC - requiredHC : null;
 
   // Calculate Actual Productive Minutes for Team
-  // Formula: Actual HC * Standard Minutes * (1 - Shrinkage%) * Occupancy%
+  // Formula: Actual HC * Standard Minutes * (1 - In Office Shrinkage%) * (1 - Out of Office Shrinkage%) * Occupancy%
   if (currentActualHC !== null && standardWorkMinutesForPeriod > 0) {
     defaults._calculatedActualProductiveAgentMinutes = currentActualHC * standardWorkMinutesForPeriod *
-      (1 - ((defaults.shrinkagePercentage ?? 0) / 100)) *
+      (1 - ((defaults.inOfficeShrinkagePercentage ?? 0) / 100)) *
+      (1 - ((defaults.outOfOfficeShrinkagePercentage ?? 0) / 100)) *
       ((defaults.occupancyPercentage ?? 0) / 100);
   } else {
     defaults._calculatedActualProductiveAgentMinutes = 0;
