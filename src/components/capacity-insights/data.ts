@@ -1,4 +1,3 @@
-
 import {
   ALL_WEEKS_HEADERS,
   ALL_MONTH_HEADERS,
@@ -42,7 +41,8 @@ const generateTeamPeriodicInputData = (
   periods.forEach(period => {
     metrics[period] = {
       aht: Math.floor(Math.random() * 10) + 5, // 5-14 min
-      shrinkagePercentage: Math.floor(Math.random() * 15) + 5, // 5-19%
+      inOfficeShrinkagePercentage: Math.floor(Math.random() * 10) + 5, // 5-14%
+      outOfOfficeShrinkagePercentage: Math.floor(Math.random() * 10) + 5, // 5-14%
       occupancyPercentage: Math.floor(Math.random() * 15) + 75, // 75-89%
       backlogPercentage: Math.floor(Math.random() * 10), // 0-9%
       attritionPercentage: parseFloat((Math.random() * 2 + 0.5).toFixed(1)), // 0.5-2.4%
@@ -106,5 +106,3 @@ ALL_BUSINESS_UNITS.forEach(bu => {
     });
   });
 });
-
-    
