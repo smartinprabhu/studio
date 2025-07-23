@@ -174,6 +174,9 @@ export interface RawLoBCapacityEntry {
   lobAverageAHT: Record<string, number | null>;
   lobTotalBaseRequiredMinutes: Record<string, number | null>;
   teams: RawTeamDataEntry[];
+  // Model-specific fields
+  lobAverageCPH?: Record<string, number | null>; // CPH Model
+  billableHoursRequire?: Record<string, number | null>; // Billable Hours Model
 }
 
 export interface CapacityDataRow {
