@@ -140,6 +140,10 @@ export interface AggregatedPeriodicMetrics extends BaseHCValues {
   lobTotalBaseRequiredMinutes?: number | null;
   lobCalculatedAverageAHT?: number | null;
   handlingCapacity?: number | null;
+  // CPH Model specific
+  lobAverageCPH?: number | null;
+  // Billable Hours Model specific
+  billableHoursRequire?: number | null;
 }
 
 export interface RawTeamDataEntry {
