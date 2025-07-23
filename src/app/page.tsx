@@ -2507,6 +2507,11 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
   // Model Selection State
   const [selectedModel, setSelectedModel] = useState<ModelType>('volume-backlog');
 
+  // Debug: Log model changes
+  useEffect(() => {
+    console.log('Selected model changed to:', selectedModel);
+  }, [selectedModel]);
+
   const [localRawCapacityDataSource, setLocalRawCapacityDataSource] = useState<RawLoBCapacityEntry[]>(() => {
     // Adjust initialMockRawCapacityData if its generation depends on specific BU names not present in V2
     // For now, assuming initialMockRawCapacityData generation logic is compatible or will be reviewed in the next step
