@@ -131,6 +131,10 @@ export interface TeamPeriodicMetrics extends BaseHCValues {
   _productivity: number | null;
   _lobTotalBaseReqMinutesForCalc: number | null;
   handlingCapacity: number | null;
+
+  // Model-specific fields
+  cph?: number | null; // CPH Model
+  requiredFTE?: number | null; // Fix FTE Model
 }
 
 export interface AggregatedPeriodicMetrics extends BaseHCValues {
