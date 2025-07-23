@@ -1,4 +1,3 @@
-
 "use client";
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
@@ -32,6 +31,8 @@ import {
   subYears,
 } from "date-fns";
 import type { DateRange } from "react-day-picker";
+import { ModelTabs } from "@/components/model-tabs";
+import type { ModelType } from "@/models/shared/interfaces";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
