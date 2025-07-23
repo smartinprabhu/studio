@@ -33,6 +33,8 @@ import {
 import type { DateRange } from "react-day-picker";
 import { ModelTabs } from "@/components/model-tabs";
 import type { ModelType } from "@/models/shared/interfaces";
+import { calculateTeamMetricsForPeriod as calculateVolumeBacklogMetrics } from "@/models/volume-backlog-model/calculations";
+import { VOLUME_BACKLOG_MODEL_DEFINITIONS } from "@/models/volume-backlog-model/definitions";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
