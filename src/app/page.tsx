@@ -2510,6 +2510,10 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
   // Debug: Log model changes
   useEffect(() => {
     console.log('Selected model changed to:', selectedModel);
+    // Temporary alert to confirm switching is working
+    if (selectedModel !== 'volume-backlog') {
+      alert(`Model switched to: ${selectedModel}`);
+    }
   }, [selectedModel]);
 
   const [localRawCapacityDataSource, setLocalRawCapacityDataSource] = useState<RawLoBCapacityEntry[]>(() => {
