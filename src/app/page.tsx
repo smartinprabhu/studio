@@ -656,6 +656,105 @@ const calculateBillableHoursTeamMetricsForPeriod = (
 
 // --- END MODEL-SPECIFIC CALCULATIONS ---
 
+// --- BEGIN MODEL-SPECIFIC METRIC DEFINITIONS ---
+
+// CPH Model Metrics (replace AHT with CPH)
+const CPH_TEAM_METRIC_DEFINITIONS: TeamMetricDefinitions = [
+  { key: "requiredHC", label: "Required HC", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Calculated number of headcount required based on demand and productivity assumptions." },
+  { key: "actualHC", label: "Actual/Starting HC", isHC: true, isEditableForTeam: true, step: 0.01, category: 'PrimaryHC', description: "The actual or starting headcount for the period before adjustments." },
+  { key: "overUnderHC", label: "Over/Under HC", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Difference between Actual/Starting HC and Required HC.\\nFormula: Actual HC - Required HC" },
+
+  { key: "cph", label: "CPH", isTime: false, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Contacts Per Hour: The number of interactions an agent can handle per hour." },
+  { key: "inOfficeShrinkagePercentage", label: "In Office Shrinkage %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "In Office Shrinkage: Percentage of paid time that agents are not available for handling interactions while in office." },
+  { key: "outOfOfficeShrinkagePercentage", label: "Out of Office Shrinkage %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Out of Office Shrinkage: Percentage of paid time that agents are not available for handling interactions while out of office." },
+  { key: "occupancyPercentage", label: "Occupancy %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Occupancy: Percentage of time agents are busy with interaction-related work during their available time." },
+  { key: "backlogPercentage", label: "Backlog %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Backlog: Percentage of additional work (e.g., deferred tasks) that needs to be handled on top of forecasted volume." },
+  { key: "attritionPercentage", label: "Attrition %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Attrition: Percentage of agents expected to leave during the period." },
+  { key: "volumeMixPercentage", label: "Volume Mix %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Volume Mix: Percentage of the LOB's total volume handled by this team." },
+
+  { key: "moveIn", label: "Move In (+)", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Headcount moving into this team from other teams or roles." },
+  { key: "moveOut", label: "Move Out (-)", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Headcount moving out of this team to other teams or roles." },
+  { key: "newHireBatch", label: "New Hire Batch", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Number of new hires starting in a batch during this period (typically in training)." },
+  { key: "newHireProduction", label: "New Hire Production", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Number of new hires becoming productive and joining the floor during this period." },
+  { key: "attritionLossHC", label: "Attrition Loss HC", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Calculated headcount lost due to attrition.\\nFormula: Actual HC * Attrition %" },
+  { key: "hcAfterAttrition", label: "HC After Attrition", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Headcount remaining after attrition loss.\\nFormula: Actual HC - Attrition Loss HC" },
+  { key: "endingHC", label: "Ending HC", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Projected headcount at the end of the period after all adjustments.\\nFormula: HC After Attrition + New Hire Prod. + Move In - Move Out" },
+  { key: "_calculatedRequiredAgentMinutes", label: "Eff. Req. Mins (Team)", isDisplayOnly: true, isTime: true, category: 'HCAdjustment', description: "Team's share of LOB demand minutes, adjusted for the team's backlog percentage.\\nFormula: (Total Base Req Mins * Team Vol Mix %) * (1 + Team Backlog %)" },
+  { key: "_calculatedActualProductiveAgentMinutes", label: "Actual Prod. Mins (Team)", isDisplayOnly: true, isTime: true, category: 'Internal', description: "Total productive agent minutes available from the team's actual headcount, considering shrinkage and occupancy.\\nFormula: Actual HC * Std Mins * (1 - In Office Shrink%) * (1 - Out of Office Shrink%) * Occupancy%" },
+];
+
+const CPH_AGGREGATED_METRIC_DEFINITIONS: AggregatedMetricDefinitions = [
+  { key: "lobVolumeForecast", label: "Volume Forecast", isEditableForLob: true, step: 1, isCount: true, description: "Total number of interactions forecasted for this LOB." },
+  { key: "lobAverageCPH", label: "Average CPH", isEditableForLob: true, step: 0.1, isTime: false, description: "Average contacts per hour assumed for LOB interactions." },
+  { key: "lobTotalBaseRequiredMinutes", label: "Total Base Req Mins", isEditableForLob: true, isTime: true, step: 1, description: "Total agent minutes required for LOB volume, calculated as Volume / CPH * 60 or input directly." },
+  { key: "handlingCapacity", label: "Handling Capacity", isEditableForLob: false, isCount: true, description: "Handling Capacity: The capacity to handle interactions, calculated as Volume Forecast * Average CPH.\\nFormula: Volume Forecast * Average CPH" },
+  { key: "requiredHC", label: "Required HC", isHC: true, description: "Aggregated required headcount from child entities." },
+  { key: "actualHC", label: "Actual/Starting HC", isHC: true, description: "Aggregated actual/starting headcount from child entities." },
+  { key: "overUnderHC", label: "Over/Under HC", isHC: true, description: "Difference between aggregated Actual/Starting HC and Required HC." },
+];
+
+// Fix FTE Model Metrics (simplified, no occupancy/backlog)
+const FIX_FTE_TEAM_METRIC_DEFINITIONS: TeamMetricDefinitions = [
+  { key: "requiredHC", label: "Required FTE", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Calculated number of FTE required based on simplified demand calculation." },
+  { key: "actualHC", label: "Actual/Starting HC", isHC: true, isEditableForTeam: true, step: 0.01, category: 'PrimaryHC', description: "The actual or starting headcount for the period before adjustments." },
+  { key: "overUnderHC", label: "Over/Under FTE", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Difference between Actual/Starting HC and Required FTE." },
+
+  { key: "inOfficeShrinkagePercentage", label: "In Office Shrinkage %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "In Office Shrinkage: Percentage of paid time that agents are not available for handling interactions while in office." },
+  { key: "outOfOfficeShrinkagePercentage", label: "Out of Office Shrinkage %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Out of Office Shrinkage: Percentage of paid time that agents are not available for handling interactions while out of office." },
+  { key: "attritionPercentage", label: "Attrition %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Attrition: Percentage of agents expected to leave during the period." },
+  { key: "volumeMixPercentage", label: "Volume Mix %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Volume Mix: Percentage of the LOB's total volume handled by this team." },
+
+  { key: "moveIn", label: "Move In (+)", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Headcount moving into this team from other teams or roles." },
+  { key: "moveOut", label: "Move Out (-)", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Headcount moving out of this team to other teams or roles." },
+  { key: "newHireBatch", label: "New Hire Batch", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Number of new hires starting in a batch during this period (typically in training)." },
+  { key: "newHireProduction", label: "New Hire Production", isEditableForTeam: true, step: 1, isHC: true, category: 'HCAdjustment', description: "Number of new hires becoming productive and joining the floor during this period." },
+  { key: "attritionLossHC", label: "Attrition Loss HC", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Calculated headcount lost due to attrition.\\nFormula: Actual HC * Attrition %" },
+  { key: "hcAfterAttrition", label: "HC After Attrition", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Headcount remaining after attrition loss.\\nFormula: Actual HC - Attrition Loss HC" },
+  { key: "endingHC", label: "Ending HC", isHC: true, isDisplayOnly: true, category: 'HCAdjustment', description: "Projected headcount at the end of the period after all adjustments.\\nFormula: HC After Attrition + New Hire Prod. + Move In - Move Out" },
+];
+
+const FIX_FTE_AGGREGATED_METRIC_DEFINITIONS: AggregatedMetricDefinitions = [
+  { key: "requiredHC", label: "Required FTE", isHC: true, description: "Aggregated required FTE from child entities." },
+  { key: "actualHC", label: "Actual/Starting HC", isHC: true, description: "Aggregated actual/starting headcount from child entities." },
+  { key: "overUnderHC", label: "Over/Under FTE", isHC: true, description: "Difference between aggregated Actual/Starting HC and Required FTE." },
+];
+
+// Fix HC Model Metrics (identical to Fix FTE but labeled as HC)
+const FIX_HC_TEAM_METRIC_DEFINITIONS: TeamMetricDefinitions = FIX_FTE_TEAM_METRIC_DEFINITIONS.map(metric =>
+  metric.key === 'requiredHC'
+    ? { ...metric, label: 'Required HC' }
+    : metric.key === 'overUnderHC'
+    ? { ...metric, label: 'Over/Under HC' }
+    : metric
+);
+
+const FIX_HC_AGGREGATED_METRIC_DEFINITIONS: AggregatedMetricDefinitions = FIX_FTE_AGGREGATED_METRIC_DEFINITIONS.map(metric =>
+  metric.key === 'requiredHC'
+    ? { ...metric, label: 'Required HC' }
+    : metric.key === 'overUnderHC'
+    ? { ...metric, label: 'Over/Under HC' }
+    : metric
+);
+
+// Billable Hours Model Metrics (strategic planning)
+const BILLABLE_HOURS_TEAM_METRIC_DEFINITIONS: TeamMetricDefinitions = [
+  { key: "requiredHC", label: "Required HC", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Calculated number of headcount required for strategic planning." },
+  { key: "actualHC", label: "Actual/Starting HC", isHC: true, isEditableForTeam: true, step: 0.01, category: 'PrimaryHC', description: "The actual or starting headcount for the period before adjustments." },
+  { key: "overUnderHC", label: "Over/Under HC", isHC: true, isDisplayOnly: true, category: 'PrimaryHC', description: "Difference between Actual/Starting HC and Required HC." },
+  { key: "attritionPercentage", label: "Attrition %", isPercentage: true, isEditableForTeam: true, step: 0.1, category: 'Assumption', description: "Attrition: Percentage of agents expected to leave during the period." },
+];
+
+const BILLABLE_HOURS_AGGREGATED_METRIC_DEFINITIONS: AggregatedMetricDefinitions = [
+  { key: "billableHoursRequire", label: "Billable Hours/Required Hours", isEditableForLob: true, step: 1, isTime: true, description: "Total billable hours required for this LOB." },
+  { key: "lobAverageAHT", label: "Average AHT", isEditableForLob: true, step: 0.1, isTime: true, description: "Average handle time assumed for LOB interactions." },
+  { key: "handlingCapacity", label: "Handling Capacity", isEditableForLob: false, isCount: true, description: "Handling Capacity: The capacity to handle interactions.\\nFormula: Billable Hours / Average AHT" },
+  { key: "requiredHC", label: "Required HC", isHC: true, description: "Aggregated required headcount from child entities." },
+  { key: "actualHC", label: "Actual/Starting HC", isHC: true, description: "Aggregated actual/starting headcount from child entities." },
+  { key: "overUnderHC", label: "Over/Under HC", isHC: true, description: "Difference between aggregated Actual/Starting HC and Required HC." },
+];
+
+// --- END MODEL-SPECIFIC METRIC DEFINITIONS ---
+
 // --- BEGIN HELPER FUNCTIONS ---
 export const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60;
 export const STANDARD_MONTHLY_WORK_MINUTES = (40 * 52 / 12) * 60;
