@@ -3475,8 +3475,8 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
               periodHeaders={displayedPeriodHeaders}
               expandedItems={expandedItems}
               toggleExpand={toggleExpand}
-              teamMetricDefinitions={TEAM_METRIC_ROW_DEFINITIONS}
-              aggregatedMetricDefinitions={AGGREGATED_METRIC_ROW_DEFINITIONS}
+              teamMetricDefinitions={getTeamMetricDefinitions(selectedModel)}
+              aggregatedMetricDefinitions={getAggregatedMetricDefinitions(selectedModel)}
               onTeamMetricChange={handleTeamMetricChange}
               onLobMetricChange={handleLobMetricChange}
               editingCell={editingCell}
