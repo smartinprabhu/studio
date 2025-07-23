@@ -3306,21 +3306,34 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
         });
         const calculatedAvgAHTFromTeams = teamCountWithAHT > 0 ? ahtSum / teamCountWithAHT : null;
 
+        // Calculate handling capacity based on model type
+        let handlingCapacityValue = null;
+        if (selectedModel === 'cph') {
+          const volume = currentSelectedTimeInterval === "Month" ? monthlyAggregatedLobInputs.lobVolumeForecast?.[period] : lobRawEntry.lobVolumeForecast?.[period];
+          const cph = (lobRawEntry as any).lobAverageCPH?.[period];
+          handlingCapacityValue = volume && cph ? volume * cph : null;
+        } else if (selectedModel === 'billable-hours') {
+          const billableHours = (lobRawEntry as any).billableHoursRequire?.[period];
+          const aht = currentSelectedTimeInterval === "Month" ? monthlyAggregatedLobInputs.lobAverageAHT?.[period] : lobRawEntry.lobAverageAHT?.[period];
+          handlingCapacityValue = billableHours && aht ? billableHours / aht : null;
+        } else {
+          // Volume & Backlog, Fix FTE, Fix HC models
+          const volume = currentSelectedTimeInterval === "Month" ? monthlyAggregatedLobInputs.lobVolumeForecast?.[period] : lobRawEntry.lobVolumeForecast?.[period];
+          const aht = currentSelectedTimeInterval === "Month" ? monthlyAggregatedLobInputs.lobAverageAHT?.[period] : lobRawEntry.lobAverageAHT?.[period];
+          handlingCapacityValue = volume && aht ? volume / aht : null;
+        }
+
         lobPeriodicData[period] = {
-          lobVolumeForecast: currentSelectedTimeInterval === "Month" ? monthlyAggregatedLobInputs.lobVolumeForecast?.[period] : lobRawEntry.lobVolumeForecast?.[period] ?? null,
-          lobAverageAHT: currentSelectedTimeInterval === "Month" ? monthlyAggregatedLobInputs.lobAverageAHT?.[period] : lobRawEntry.lobAverageAHT?.[period] ?? null,
-          lobTotalBaseRequiredMinutes: lobCalculatedBaseRequiredMinutes[period] ?? null, // This was pre-calculated based on interval
+          lobVolumeForecast: (selectedModel === 'fix-fte' || selectedModel === 'fix-hc') ? null : (currentSelectedTimeInterval === "Month" ? monthlyAggregatedLobInputs.lobVolumeForecast?.[period] : lobRawEntry.lobVolumeForecast?.[period] ?? null),
+          lobAverageAHT: (selectedModel === 'cph') ? null : (currentSelectedTimeInterval === "Month" ? monthlyAggregatedLobInputs.lobAverageAHT?.[period] : lobRawEntry.lobAverageAHT?.[period] ?? null),
+          lobAverageCPH: (selectedModel === 'cph') ? ((lobRawEntry as any).lobAverageCPH?.[period] ?? null) : null,
+          billableHoursRequire: (selectedModel === 'billable-hours') ? ((lobRawEntry as any).billableHoursRequire?.[period] ?? null) : null,
+          lobTotalBaseRequiredMinutes: lobCalculatedBaseRequiredMinutes[period] ?? null,
           requiredHC: reqHcSum,
           actualHC: actHcSum,
           overUnderHC: overUnderHCSum,
           lobCalculatedAverageAHT: calculatedAvgAHTFromTeams,
-          handlingCapacity: currentSelectedTimeInterval === "Month"
-            ? (monthlyAggregatedLobInputs.lobVolumeForecast?.[period] && monthlyAggregatedLobInputs.lobAverageAHT?.[period]
-              ? monthlyAggregatedLobInputs.lobVolumeForecast[period] / monthlyAggregatedLobInputs.lobAverageAHT[period]
-              : null)
-            : (lobRawEntry.lobVolumeForecast?.[period] && lobRawEntry.lobAverageAHT?.[period]
-              ? lobRawEntry.lobVolumeForecast[period] / lobRawEntry.lobAverageAHT[period]
-              : null),
+          handlingCapacity: handlingCapacityValue,
         };
       });
 
