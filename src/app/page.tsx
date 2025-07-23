@@ -2877,7 +2877,7 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
   const handleLobMetricChange = useCallback((
     lobId: string,
     periodHeader: string,
-    metricKey: 'lobVolumeForecast' | 'lobAverageAHT' | 'lobTotalBaseRequiredMinutes',
+    metricKey: 'lobVolumeForecast' | 'lobAverageAHT' | 'lobTotalBaseRequiredMinutes' | 'lobAverageCPH' | 'billableHoursRequire',
     rawValue: string
   ) => {
     const newValueParsed = rawValue === "" || rawValue === "-" ? null : parseFloat(rawValue);
