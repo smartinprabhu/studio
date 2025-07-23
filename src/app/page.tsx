@@ -35,6 +35,14 @@ import { ModelTabs } from "@/components/model-tabs";
 import type { ModelType } from "@/models/shared/interfaces";
 import { calculateTeamMetricsForPeriod as calculateVolumeBacklogMetrics } from "@/models/volume-backlog-model/calculations";
 import { VOLUME_BACKLOG_MODEL_DEFINITIONS } from "@/models/volume-backlog-model/definitions";
+import { calculateCPHTeamMetricsForPeriod } from "@/models/cph-model/calculations";
+import { CPH_TEAM_METRIC_DEFINITIONS, CPH_AGGREGATED_METRIC_DEFINITIONS } from "@/models/cph-model/definitions";
+import { calculateFixFTETeamMetricsForPeriod } from "@/models/fix-fte-model/calculations";
+import { FIX_FTE_TEAM_METRIC_DEFINITIONS, FIX_FTE_AGGREGATED_METRIC_DEFINITIONS } from "@/models/fix-fte-model/definitions";
+import { calculateFixHCTeamMetricsForPeriod } from "@/models/fix-hc-model/calculations";
+import { FIX_HC_TEAM_METRIC_DEFINITIONS, FIX_HC_AGGREGATED_METRIC_DEFINITIONS } from "@/models/fix-hc-model/definitions";
+import { calculateBillableHoursTeamMetricsForPeriod } from "@/models/billable-hours-model/calculations";
+import { BILLABLE_HOURS_TEAM_METRIC_DEFINITIONS, BILLABLE_HOURS_AGGREGATED_METRIC_DEFINITIONS } from "@/models/billable-hours-model/definitions";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
