@@ -21,8 +21,9 @@ export const BILLABLE_HOURS_TEAM_METRIC_DEFINITIONS: MetricDefinition[] = [
 
 export const BILLABLE_HOURS_AGGREGATED_METRIC_DEFINITIONS: MetricDefinition[] = [
   { key: "billableHoursRequire", label: "Billable Hours/Require Hours", isEditableForLob: true, step: 1, isTime: true, description: "Total billable hours required for this LOB." },
-  { key: "handlingCapacity", label: "Handling Capacity", isEditableForLob: true, step: 1, isCount: true, description: "Strategic handling capacity target." },
-  
+  { key: "lobAverageAHT", label: "Average AHT", isEditableForLob: true, step: 0.1, isTime: true, description: "Average handle time assumed for LOB interactions." },
+  { key: "handlingCapacity", label: "Handling Capacity", isEditableForLob: false, isCount: true, description: "Handling Capacity: The capacity to handle interactions.\nFormula: Billable Hours / Average AHT" },
+
   { key: "requiredHC", label: "Required HC", isHC: true, description: "Aggregated required headcount from child entities." },
   { key: "actualHC", label: "Actual/Starting HC", isHC: true, description: "Aggregated actual/starting headcount from child entities." },
   { key: "overUnderHC", label: "Over/Under HC", isHC: true, description: "Difference between aggregated Actual/Starting HC and Required HC." },
