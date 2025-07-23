@@ -2793,6 +2793,21 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
 
         if (!lobEntry.lobAverageAHT) lobEntry.lobAverageAHT = {};
         lobEntry.lobAverageAHT[periodHeader] = calculatedAvgAHT;
+      } else if (metricKey === 'cph' && selectedModel === 'cph') {
+        // For CPH model, recalculate average CPH for the LOB when team CPH changes
+        let cphSum = 0;
+        let teamCount = 0;
+        lobEntry.teams.forEach(team => {
+          const teamPeriodData = team.periodicInputData[periodHeader];
+          if (teamPeriodData?.cph !== null && teamPeriodData?.cph !== undefined) {
+            cphSum += teamPeriodData.cph;
+            teamCount++;
+          }
+        });
+        const calculatedAvgCPH = teamCount > 0 ? cphSum / teamCount : null;
+
+        if (!lobEntry.lobAverageCPH) lobEntry.lobAverageCPH = {};
+        lobEntry.lobAverageCPH[periodHeader] = calculatedAvgCPH;
       } else if (metricKey === 'volumeMixPercentage') {
         const updatedTeamMix = Math.max(0, Math.min(100, newValue === null ? 0 : newValue as number));
         (teamEntry.periodicInputData[periodHeader] as any)[metricKey] = updatedTeamMix;
