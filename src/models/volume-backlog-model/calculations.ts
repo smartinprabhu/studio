@@ -78,5 +78,8 @@ export function calculateTeamMetricsForPeriod(
   // Ending HC: HC After Attrition + New Hire Prod. + Move In - Move Out
   defaults.endingHC = hcAfterAttrition + (defaults.newHireProduction ?? 0) + (defaults.moveIn ?? 0) - (defaults.moveOut ?? 0);
 
+  // Store LOB total base required minutes for reference
+  defaults._lobTotalBaseReqMinutesForCalc = lobTotalBaseRequiredMinutesForPeriod;
+
   return defaults;
 }
