@@ -39,8 +39,12 @@ const generateTeamPeriodicInputData = (
 
 
   periods.forEach(period => {
+    const ahtValue = Math.floor(Math.random() * 10) + 5; // 5-14 min
+    const cphValue = parseFloat((60 / ahtValue).toFixed(1)); // Convert AHT to CPH
+
     metrics[period] = {
-      aht: Math.floor(Math.random() * 10) + 5, // 5-14 min
+      aht: ahtValue,
+      cph: cphValue, // CPH Model
       inOfficeShrinkagePercentage: Math.floor(Math.random() * 10) + 5, // 5-14%
       outOfOfficeShrinkagePercentage: Math.floor(Math.random() * 10) + 5, // 5-14%
       occupancyPercentage: Math.floor(Math.random() * 15) + 75, // 75-89%
