@@ -27,10 +27,11 @@ export const CPH_TEAM_METRIC_DEFINITIONS: MetricDefinition[] = [
 ];
 
 export const CPH_AGGREGATED_METRIC_DEFINITIONS: MetricDefinition[] = [
-  { key: "lobVolumeForecast", label: "LOB Volume Forecast", isEditableForLob: true, step: 1, isCount: true, description: "Total number of interactions forecasted for this LOB." },
-  { key: "averageCPH", label: "LOB Average CPH", isEditableForLob: true, step: 0.1, isTime: false, description: "Average contacts per hour assumed for LOB interactions." },
-  { key: "lobTotalBaseRequiredMinutes", label: "LOB Total Base Req Mins", isEditableForLob: true, isTime: true, step: 1, description: "Total agent minutes required for LOB volume, calculated as (Volume / CPH) * 60 or input directly." },
-  
+  { key: "lobVolumeForecast", label: "Volume Forecast", isEditableForLob: true, step: 1, isCount: true, description: "Total number of interactions forecasted for this LOB." },
+  { key: "lobAverageCPH", label: "Average CPH", isEditableForLob: true, step: 0.1, isTime: false, description: "Average contacts per hour assumed for LOB interactions." },
+  { key: "lobTotalBaseRequiredMinutes", label: "Total Base Req Mins", isEditableForLob: true, isTime: true, step: 1, description: "Total agent minutes required for LOB volume, calculated as (Volume / CPH) * 60 or input directly." },
+  { key: "handlingCapacity", label: "Handling Capacity", isEditableForLob: false, isCount: true, description: "Handling Capacity: The capacity to handle interactions, calculated as Volume Forecast * Average CPH.\nFormula: Volume Forecast * Average CPH" },
+
   { key: "requiredHC", label: "Required HC", isHC: true, description: "Aggregated required headcount from child entities." },
   { key: "actualHC", label: "Actual/Starting HC", isHC: true, description: "Aggregated actual/starting headcount from child entities." },
   { key: "overUnderHC", label: "Over/Under HC", isHC: true, description: "Difference between aggregated Actual/Starting HC and Required HC." },
