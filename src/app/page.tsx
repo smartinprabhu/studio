@@ -2685,7 +2685,7 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
 
     const processRow = (row: CapacityDataRow, level: number) => {
       const indent = "  ".repeat(level);
-      const metricsToInclude = row.itemType === 'Team' ? TEAM_METRIC_ROW_DEFINITIONS : AGGREGATED_METRIC_ROW_DEFINITIONS;
+      const metricsToInclude = row.itemType === 'Team' ? getTeamMetricDefinitions(selectedModel) : getAggregatedMetricDefinitions(selectedModel);
 
       metricsToInclude.forEach(metricDef => {
         // Skip internal metrics for export
