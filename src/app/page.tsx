@@ -3101,7 +3101,7 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
             const monthPeriod = monthPeriodOrWeekPeriod;
             const { startDate: monthStartDate, endDate: monthEndDate } = getHeaderDateRange(monthPeriod, "Month");
             if (!monthStartDate || !monthEndDate) {
-              periodicTeamMetrics[monthPeriod] = calculateTeamMetricsForPeriod({}, null, standardWorkMinutes);
+              periodicTeamMetrics[monthPeriod] = getCalculationFunction(selectedModel)({}, null, standardWorkMinutes);
               return;
             }
 
