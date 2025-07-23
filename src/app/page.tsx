@@ -160,7 +160,6 @@ function VolumeBacklogModelView() {
             lobVolumeForecast: lobVolume,
             lobAverageAHT: lobAHT,
             lobTotalBaseRequiredMinutes: lobTotalBaseMinutes,
-            handlingCapacity: lobAHT > 0 ? lobVolume / lobAHT : null,
             requiredHC: lobRequiredHC,
             actualHC: lobActualHC,
             overUnderHC: lobActualHC - lobRequiredHC,
