@@ -487,6 +487,175 @@ ALL_BUSINESS_UNITS.forEach(bu => {
 
 // --- END CONSOLIDATED DATA ---
 
+// --- BEGIN MODEL-SPECIFIC CALCULATIONS ---
+
+// CPH Model Calculation (identical to Volume & Backlog but uses CPH instead of AHT)
+const calculateCPHTeamMetricsForPeriod = (
+  teamInputDataCurrentPeriod: Partial<TeamPeriodicMetrics>,
+  lobTotalBaseRequiredMinutesForPeriod: number | null,
+  standardWorkMinutesForPeriod: number
+): TeamPeriodicMetrics => {
+  const defaults: TeamPeriodicMetrics = {
+    aht: null,
+    inOfficeShrinkagePercentage: null,
+    outOfOfficeShrinkagePercentage: null,
+    occupancyPercentage: null,
+    backlogPercentage: null,
+    attritionPercentage: null,
+    volumeMixPercentage: null,
+    actualHC: null,
+    moveIn: null,
+    moveOut: null,
+    newHireBatch: null,
+    newHireProduction: null,
+    handlingCapacity: null,
+    _productivity: null,
+    _calculatedRequiredAgentMinutes: null,
+    _calculatedActualProductiveAgentMinutes: null,
+    requiredHC: null,
+    overUnderHC: null,
+    attritionLossHC: null,
+    hcAfterAttrition: null,
+    endingHC: null,
+    _lobTotalBaseReqMinutesForCalc: null,
+    ...teamInputDataCurrentPeriod,
+  };
+
+  // Convert CPH to AHT for internal calculations (CPH -> AHT: 60 / CPH)
+  const cphValue = (defaults as any).cph ?? 0;
+  const convertedAHT = cphValue > 0 ? 60 / cphValue : null;
+  defaults.aht = convertedAHT;
+
+  // Use Volume & Backlog logic with converted AHT
+  return calculateVolumeBacklogMetrics(defaults, lobTotalBaseRequiredMinutesForPeriod, standardWorkMinutesForPeriod);
+};
+
+// Fix FTE Model Calculation (simplified, no occupancy or backlog)
+const calculateFixFTETeamMetricsForPeriod = (
+  teamInputDataCurrentPeriod: Partial<TeamPeriodicMetrics>,
+  lobTotalBaseRequiredMinutesForPeriod: number | null,
+  standardWorkMinutesForPeriod: number
+): TeamPeriodicMetrics => {
+  const defaults: TeamPeriodicMetrics = {
+    aht: null,
+    inOfficeShrinkagePercentage: null,
+    outOfOfficeShrinkagePercentage: null,
+    occupancyPercentage: null,
+    backlogPercentage: null,
+    attritionPercentage: null,
+    volumeMixPercentage: null,
+    actualHC: null,
+    moveIn: null,
+    moveOut: null,
+    newHireBatch: null,
+    newHireProduction: null,
+    handlingCapacity: null,
+    _productivity: null,
+    _calculatedRequiredAgentMinutes: null,
+    _calculatedActualProductiveAgentMinutes: null,
+    requiredHC: null,
+    overUnderHC: null,
+    attritionLossHC: null,
+    hcAfterAttrition: null,
+    endingHC: null,
+    _lobTotalBaseReqMinutesForCalc: null,
+    ...teamInputDataCurrentPeriod,
+  };
+
+  // Simplified calculation: no occupancy or backlog factors
+  const baseTeamRequiredMinutes = (lobTotalBaseRequiredMinutesForPeriod ?? 0) * ((defaults.volumeMixPercentage ?? 0) / 100);
+  defaults._calculatedRequiredAgentMinutes = baseTeamRequiredMinutes;
+
+  const productiveMinutesPerFTE = standardWorkMinutesForPeriod *
+    (1 - ((defaults.inOfficeShrinkagePercentage ?? 0) / 100)) *
+    (1 - ((defaults.outOfOfficeShrinkagePercentage ?? 0) / 100));
+    // Note: No occupancy multiplication (key difference from Volume & Backlog)
+
+  const requiredFTE = productiveMinutesPerFTE > 0 ? baseTeamRequiredMinutes / productiveMinutesPerFTE : null;
+  (defaults as any).requiredFTE = requiredFTE;
+  defaults.requiredHC = requiredFTE; // For display purposes
+
+  // HC flow calculations remain the same
+  const currentActualHC = defaults.actualHC ?? 0;
+  defaults.overUnderHC = (currentActualHC !== null && requiredFTE !== null) ? currentActualHC - requiredFTE : null;
+
+  const attritionLossHC = currentActualHC * ((defaults.attritionPercentage ?? 0) / 100);
+  defaults.attritionLossHC = attritionLossHC;
+  const hcAfterAttrition = currentActualHC - attritionLossHC;
+  defaults.hcAfterAttrition = hcAfterAttrition;
+  defaults.endingHC = hcAfterAttrition + (defaults.newHireProduction ?? 0) + (defaults.moveIn ?? 0) - (defaults.moveOut ?? 0);
+  defaults._lobTotalBaseReqMinutesForCalc = lobTotalBaseRequiredMinutesForPeriod;
+
+  return defaults;
+};
+
+// Fix HC Model Calculation (identical to Fix FTE but outputs HC)
+const calculateFixHCTeamMetricsForPeriod = (
+  teamInputDataCurrentPeriod: Partial<TeamPeriodicMetrics>,
+  lobTotalBaseRequiredMinutesForPeriod: number | null,
+  standardWorkMinutesForPeriod: number
+): TeamPeriodicMetrics => {
+  const fteResult = calculateFixFTETeamMetricsForPeriod(teamInputDataCurrentPeriod, lobTotalBaseRequiredMinutesForPeriod, standardWorkMinutesForPeriod);
+  // Same calculation as FTE, just different labeling
+  return fteResult;
+};
+
+// Billable Hours Model Calculation (strategic planning)
+const calculateBillableHoursTeamMetricsForPeriod = (
+  teamInputDataCurrentPeriod: Partial<TeamPeriodicMetrics>,
+  lobTotalBaseRequiredMinutesOrBillableHours: number | null,
+  standardWorkMinutesForPeriod: number
+): TeamPeriodicMetrics => {
+  const defaults: TeamPeriodicMetrics = {
+    aht: null,
+    inOfficeShrinkagePercentage: null,
+    outOfOfficeShrinkagePercentage: null,
+    occupancyPercentage: null,
+    backlogPercentage: null,
+    attritionPercentage: null,
+    volumeMixPercentage: null,
+    actualHC: null,
+    moveIn: null,
+    moveOut: null,
+    newHireBatch: null,
+    newHireProduction: null,
+    handlingCapacity: null,
+    _productivity: null,
+    _calculatedRequiredAgentMinutes: null,
+    _calculatedActualProductiveAgentMinutes: null,
+    requiredHC: null,
+    overUnderHC: null,
+    attritionLossHC: null,
+    hcAfterAttrition: null,
+    endingHC: null,
+    _lobTotalBaseReqMinutesForCalc: null,
+    ...teamInputDataCurrentPeriod,
+  };
+
+  // Simplified calculation for strategic planning
+  const billableHours = lobTotalBaseRequiredMinutesOrBillableHours ?? 0;
+  const averageAHT = defaults.aht ?? 0;
+
+  // Strategic calculation: billable hours * AHT / standard minutes
+  const requiredMinutes = billableHours * averageAHT;
+  defaults._calculatedRequiredAgentMinutes = requiredMinutes;
+  defaults.requiredHC = requiredMinutes / 2400; // Assume 40 hours/week = 2400 minutes
+
+  // Basic HC flow calculations
+  const currentActualHC = defaults.actualHC ?? 0;
+  defaults.overUnderHC = (currentActualHC !== null && defaults.requiredHC !== null) ? currentActualHC - defaults.requiredHC : null;
+
+  const attritionLossHC = currentActualHC * ((defaults.attritionPercentage ?? 0) / 100);
+  defaults.attritionLossHC = attritionLossHC;
+  const hcAfterAttrition = currentActualHC - attritionLossHC;
+  defaults.hcAfterAttrition = hcAfterAttrition;
+  defaults.endingHC = hcAfterAttrition + (defaults.newHireProduction ?? 0) + (defaults.moveIn ?? 0) - (defaults.moveOut ?? 0);
+
+  return defaults;
+};
+
+// --- END MODEL-SPECIFIC CALCULATIONS ---
+
 // --- BEGIN HELPER FUNCTIONS ---
 export const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60;
 export const STANDARD_MONTHLY_WORK_MINUTES = (40 * 52 / 12) * 60;
