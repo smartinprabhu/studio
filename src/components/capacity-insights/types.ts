@@ -151,7 +151,10 @@ export interface RawTeamDataEntry {
     '_calculatedActualProductiveAgentMinutes' |
     'attritionLossHC' |
     'hcAfterAttrition' |
-    'endingHC'
+    'endingHC' |
+    '_productivity' |
+    '_lobTotalBaseReqMinutesForCalc' |
+    'handlingCapacity'
   >>>;
 }
 
