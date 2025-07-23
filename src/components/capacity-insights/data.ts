@@ -99,6 +99,16 @@ ALL_BUSINESS_UNITS.forEach(bu => {
     
     const lobInputs = generateLobInputs(MOCK_DATA_PERIODS);
 
+    // Generate model-specific data
+    const cphData: Record<string, number | null> = {};
+    const billableHoursData: Record<string, number | null> = {};
+
+    MOCK_DATA_PERIODS.forEach(period => {
+      const aht = lobInputs.aht[period];
+      cphData[period] = aht && aht > 0 ? parseFloat((60 / aht).toFixed(1)) : null;
+      billableHoursData[period] = Math.floor(Math.random() * 500) + 100; // 100-599 billable hours
+    });
+
     initialMockRawCapacityData.push({
       id: `${bu.toLowerCase().replace(/\s+/g, '-')}_${lobName.toLowerCase().replace(/\s+/g, '-')}`,
       bu: bu,
@@ -106,6 +116,8 @@ ALL_BUSINESS_UNITS.forEach(bu => {
       lobVolumeForecast: lobInputs.volume,
       lobAverageAHT: lobInputs.aht,
       lobTotalBaseRequiredMinutes: lobInputs.baseReqMins, // Populated from calculation
+      lobAverageCPH: cphData, // CPH Model data
+      billableHoursRequire: billableHoursData, // Billable Hours Model data
       teams: teamsForLob,
     });
   });
