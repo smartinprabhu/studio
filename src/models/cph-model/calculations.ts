@@ -24,9 +24,11 @@ export function calculateCPHTeamMetricsForPeriod(
   defaults._calculatedRequiredAgentMinutes = effMins;
 
   // 3. Productive minutes per HC
-  const shrinkageFactor = 1 - ((defaults.shrinkagePercentage ?? 0) / 100);
+  const inOfficeShrinkageFactor = 1 - ((defaults.inOfficeShrinkagePercentage ?? 0) / 100);
+  const outOfOfficeShrinkageFactor = 1 - ((defaults.outOfOfficeShrinkagePercentage ?? 0) / 100);
+  const combinedShrinkageFactor = inOfficeShrinkageFactor * outOfOfficeShrinkageFactor;
   const occupancyFactor = (defaults.occupancyPercentage ?? 85) / 100;
-  const effMinPerHC = standardWorkMinutes * shrinkageFactor * occupancyFactor;
+  const effMinPerHC = standardWorkMinutes * combinedShrinkageFactor * occupancyFactor;
 
   // 4. Required HC
   defaults.requiredHC = (effMins > 0 && effMinPerHC > 0) ? effMins / effMinPerHC : null;
