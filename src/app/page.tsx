@@ -3437,6 +3437,10 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground rounded-lg min-h-0">
+      <ModelTabs
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
+      />
       <HeaderSection
         planFilterOptions={planFilterOptions}
         selectedPlanBusinessUnit={selectedPlanBusinessUnit}
