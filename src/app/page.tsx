@@ -3302,7 +3302,7 @@ export default function CapacityInsightsPageV2({ navigateSimulator, businessId }
     setDisplayableCapacityData(newDisplayData);
   }, [viewMode, selectedPlanBusinessUnit, selectedPlanLineOfBusiness, selectedPlanTimeInterval, selectedPlanDateRange,
     selectedChartBusinessUnit, selectedChartLineOfBusiness, selectedChartTimeInterval, selectedChartDateRange,
-    localRawCapacityDataSource]);
+    localRawCapacityDataSource, selectedModel]);
 
   useEffect(() => {
     processDataForTable();
