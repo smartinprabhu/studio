@@ -755,6 +755,61 @@ const BILLABLE_HOURS_AGGREGATED_METRIC_DEFINITIONS: AggregatedMetricDefinitions 
 
 // --- END MODEL-SPECIFIC METRIC DEFINITIONS ---
 
+// --- BEGIN MODEL SELECTION HELPERS ---
+
+const getCalculationFunction = (model: ModelType) => {
+  switch (model) {
+    case 'volume-backlog':
+      return calculateVolumeBacklogMetrics;
+    case 'cph':
+      return calculateCPHTeamMetricsForPeriod;
+    case 'fix-fte':
+      return calculateFixFTETeamMetricsForPeriod;
+    case 'fix-hc':
+      return calculateFixHCTeamMetricsForPeriod;
+    case 'billable-hours':
+      return calculateBillableHoursTeamMetricsForPeriod;
+    default:
+      return calculateVolumeBacklogMetrics;
+  }
+};
+
+const getTeamMetricDefinitions = (model: ModelType): TeamMetricDefinitions => {
+  switch (model) {
+    case 'volume-backlog':
+      return VOLUME_BACKLOG_MODEL_DEFINITIONS.teamMetrics;
+    case 'cph':
+      return CPH_TEAM_METRIC_DEFINITIONS;
+    case 'fix-fte':
+      return FIX_FTE_TEAM_METRIC_DEFINITIONS;
+    case 'fix-hc':
+      return FIX_HC_TEAM_METRIC_DEFINITIONS;
+    case 'billable-hours':
+      return BILLABLE_HOURS_TEAM_METRIC_DEFINITIONS;
+    default:
+      return VOLUME_BACKLOG_MODEL_DEFINITIONS.teamMetrics;
+  }
+};
+
+const getAggregatedMetricDefinitions = (model: ModelType): AggregatedMetricDefinitions => {
+  switch (model) {
+    case 'volume-backlog':
+      return VOLUME_BACKLOG_MODEL_DEFINITIONS.aggregatedMetrics;
+    case 'cph':
+      return CPH_AGGREGATED_METRIC_DEFINITIONS;
+    case 'fix-fte':
+      return FIX_FTE_AGGREGATED_METRIC_DEFINITIONS;
+    case 'fix-hc':
+      return FIX_HC_AGGREGATED_METRIC_DEFINITIONS;
+    case 'billable-hours':
+      return BILLABLE_HOURS_AGGREGATED_METRIC_DEFINITIONS;
+    default:
+      return VOLUME_BACKLOG_MODEL_DEFINITIONS.aggregatedMetrics;
+  }
+};
+
+// --- END MODEL SELECTION HELPERS ---
+
 // --- BEGIN HELPER FUNCTIONS ---
 export const STANDARD_WEEKLY_WORK_MINUTES = 40 * 60;
 export const STANDARD_MONTHLY_WORK_MINUTES = (40 * 52 / 12) * 60;
