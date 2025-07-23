@@ -156,10 +156,24 @@ function VolumeBacklogModelView() {
             lobActualHC += calculatedTeamMetrics.actualHC || 0;
           });
 
+          // Calculate average AHT from teams (weighted by volume mix)
+          let ahtSum = 0;
+          let teamCount = 0;
+          lobEntry.teams.forEach(teamEntry => {
+            const teamPeriodData = teamEntry.periodicInputData[period];
+            if (teamPeriodData?.aht !== null && teamPeriodData?.aht !== undefined) {
+              ahtSum += teamPeriodData.aht;
+              teamCount++;
+            }
+          });
+          const calculatedAvgAHT = teamCount > 0 ? ahtSum / teamCount : null;
+
           lobPeriodicData[period] = {
             lobVolumeForecast: lobVolume,
             lobAverageAHT: lobAHT,
             lobTotalBaseRequiredMinutes: lobTotalBaseMinutes,
+            lobCalculatedAverageAHT: calculatedAvgAHT,
+            handlingCapacity: lobAHT > 0 ? lobVolume / lobAHT : null,
             requiredHC: lobRequiredHC,
             actualHC: lobActualHC,
             overUnderHC: lobActualHC - lobRequiredHC,
